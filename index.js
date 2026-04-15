@@ -96,3 +96,35 @@ app.get('/dashboard', async (req, res) => {
 
     let cardsHtml = "";
     for (const row of rows) {
+        const status = await getSlackDetails(row[1]);
+        cardsHtml += `
+            <div class="card">
+                <img src="${row[2] || 'https://via.placeholder.com/100'}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
+                <span class="name">${row[0]}</span>
+                <div class="status-badge ${status.color}">
+                    <span class="emoji">${status.emoji}</span>
+                    <span>${status.text}</span>
+                </div>
+            </div>`;
+    }
+    res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Letztes Update: ${new Date().toLocaleTimeString()}</div></div>`);
+});
+
+app.get('/update', async (req, res) => {
+    const { status, user } = req.query;
+    const rows = await getSheetData();
+    const personRow = rows ? rows.find(r => r[0].toLowerCase() === user.toLowerCase()) : null;
+    if (!personRow) return res.status(404).send("User nicht gefunden.");
+
+    let text = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
+    let emoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
+
+    try {
+        await axios.post('https://slack.com/api/users.profile.set', {
+            profile: { status_text: text, status_emoji: emoji }
+        }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+        res.send(`Status für ${personRow[0]} aktualisiert. <a href="/dashboard">Dashboard</a>`);
+    } catch (e) { res.status(500).send("Fehler."); }
+});
+
+app.listen(port, () => console.log(`Server läuft auf Port ${port}`));
