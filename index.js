@@ -12,7 +12,7 @@ function translateEmoji(slackEmoji, isOnline) {
         const emojiMap = {
             ':office:': '🏢', ':house_with_garden:': '🏡', ':house:': '🏠',
             ':palm_tree:': '🌴', ':wave:': '👋', ':beach_with_umbrella:': '🏖️',
-            ':coffee:': '☕', ':stuck_out_tongue:': '😋'
+            ':coffee:': '☕', ':stuck_out_tongue:': '😋', ':computer:': '💻'
         };
         return emojiMap[slackEmoji] || '📍';
     }
@@ -25,65 +25,44 @@ const sharedStyles = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="60">
     <style>
-      body { font-family: -apple-system, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-      .container { width: 100%; max-width: 1000px; text-align: center; }
+      body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+      .container { width: 100%; max-width: 1100px; text-align: center; }
       h1 { color: #1d1d1f; margin-bottom: 30px; font-size: 2.2rem; font-weight: 800; }
       .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 25px; width: 100%; }
       .card { background: white; padding: 25px; border-radius: 24px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); }
-      .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; background: #f8f8f8; border: 4px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+      .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; background: #f8f8f8; border: 4px solid #fff; }
       .name { font-weight: bold; font-size: 1.25rem; color: #1d1d1f; display: block; margin-bottom: 12px; }
       .status-badge { display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 30px; font-size: 0.9rem; font-weight: 700; }
       .emoji { font-size: 1.2rem; margin-right: 8px; }
       .bg-active { background: #e6f4ea; color: #1e7e34; } 
       .bg-home { background: #fff9e6; color: #947600; }
       .bg-away { background: #f5f5f7; color: #86868b; }
-      .info { font-size: 0.7rem; color: #bbb; margin-top: 20px; }
+      .info { font-size: 0.7rem; color: #bbb; margin-top: 30px; }
     </style>
   </head>
 `;
 
-async function getSheetData() {
-    try {
-        const response = await axios.get(CSV_URL);
-        return parse(response.data, { from_line: 2, skip_empty_lines: true, trim: true });
-    } catch (e) { return null; }
-}
-
 async function getSlackDetails(slackId) {
     if (!slackId || slackId.length < 5) return { text: "ID fehlt", emoji: '❓', color: "bg-away" };
     
-    let isOnline = false;
-    let statusText = "";
-    let rawEmoji = "";
-
     try {
-        // 1. Profil abrufen (Sollte immer gehen)
-        const profileRes = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId.trim()}`, {
-            headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
-        });
-        if (profileRes.data.ok) {
-            statusText = profileRes.data.profile.status_text;
-            rawEmoji = profileRes.data.profile.status_emoji || "";
-        }
+        const headers = { Authorization: `Bearer ${SLACK_TOKEN}` };
+        
+        // Wir fragen nacheinander ab, um Timeouts zu vermeiden
+        const profileRes = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId.trim()}`, { headers }).catch(() => ({ data: { ok: false } }));
+        const presenceRes = await axios.get(`https://slack.com/api/users.getPresence?user=${slackId.trim()}`, { headers }).catch(() => ({ data: { ok: false } }));
 
-        // 2. Presence abrufen (Nur wenn Berechtigung da ist)
-        try {
-            const presenceRes = await axios.get(`https://slack.com/api/users.getPresence?user=${slackId.trim()}`, {
-                headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
-            });
-            if (presenceRes.data.ok) {
-                isOnline = presenceRes.data.presence === 'active';
-            }
-        } catch (e) {
-            // Falls presence:read fehlt, bleibt isOnline einfach false
-        }
+        let isOnline = presenceRes.data.ok ? presenceRes.data.presence === 'active' : false;
+        let statusText = profileRes.data.ok ? profileRes.data.profile.status_text : "";
+        let rawEmoji = profileRes.data.ok ? profileRes.data.profile.status_emoji : "";
 
         let text = statusText;
         let color = "bg-away";
 
         if (statusText) {
-            if (statusText.toLowerCase().includes("büro")) color = "bg-active";
-            if (statusText.toLowerCase().includes("homeoffice")) color = "bg-home";
+            const lower = statusText.toLowerCase();
+            if (lower.includes("büro") || lower.includes("da")) color = "bg-active";
+            else if (lower.includes("home")) color = "bg-home";
         } else if (isOnline) {
             text = "Online";
             color = "bg-active";
@@ -92,47 +71,56 @@ async function getSlackDetails(slackId) {
         }
 
         return { text, emoji: translateEmoji(rawEmoji, isOnline), color };
-
     } catch (e) {
-        return { text: "Slack Fehler", emoji: '⚠️', color: "bg-away" };
+        return { text: "Fehler", emoji: '⚠️', color: "bg-away" };
     }
 }
 
 app.get('/dashboard', async (req, res) => {
-    const rows = await getSheetData();
-    if (!rows) return res.send("Google Sheet nicht erreichbar.");
+    try {
+        const response = await axios.get(CSV_URL);
+        const rows = parse(response.data, { from_line: 2, skip_empty_lines: true, trim: true });
 
-    let cardsHtml = "";
-    for (const row of rows) {
-        const status = await getSlackDetails(row[1]);
-        cardsHtml += `
-            <div class="card">
-                <img src="${row[2] || 'https://via.placeholder.com/100'}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
-                <span class="name">${row[0]}</span>
-                <div class="status-badge ${status.color}">
-                    <span class="emoji">${status.emoji}</span>
-                    <span>${status.text}</span>
-                </div>
-            </div>`;
+        let cardsHtml = "";
+        // Wir nutzen eine normale Schleife für bessere Stabilität
+        for (const row of rows) {
+            console.log(`Lade Status für: ${row[0]}`); // Debugging für Render Logs
+            const status = await getSlackDetails(row[1]);
+            cardsHtml += `
+                <div class="card">
+                    <img src="${row[2] || 'https://via.placeholder.com/100'}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
+                    <span class="name">${row[0]}</span>
+                    <div class="status-badge ${status.color}">
+                        <span class="emoji">${status.emoji}</span>
+                        <span>${status.text}</span>
+                    </div>
+                </div>`;
+        }
+        res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Stand: ${new Date().toLocaleTimeString('de-DE')}</div></div>`);
+    } catch (error) {
+        console.error("Dashboard Fehler:", error.message);
+        res.status(500).send("Das Dashboard konnte nicht geladen werden. Bitte Seite neu laden.");
     }
-    res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Update: ${new Date().toLocaleTimeString()}</div></div>`);
 });
 
 app.get('/update', async (req, res) => {
     const { status, user } = req.query;
-    const rows = await getSheetData();
-    const personRow = rows ? rows.find(r => r[0].toLowerCase() === user.toLowerCase()) : null;
-    if (!personRow) return res.status(404).send("Mitarbeiter nicht gefunden.");
-
-    let text = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
-    let emoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
-
     try {
+        const sheetRes = await axios.get(CSV_URL);
+        const rows = parse(sheetRes.data, { from_line: 2, skip_empty_lines: true, trim: true });
+        const person = rows.find(r => r[0].toLowerCase() === user.toLowerCase());
+
+        if (!person) return res.status(404).send("User nicht gefunden.");
+
+        const text = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
+        const emoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
+
         await axios.post('https://slack.com/api/users.profile.set', {
             profile: { status_text: text, status_emoji: emoji }
         }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
-        res.send(`Status für ${personRow[0]} aktualisiert. <a href="/dashboard">Dashboard</a>`);
-    } catch (e) { res.status(500).send("Slack Update fehlgeschlagen."); }
+
+        res.send(`Status aktualisiert. <a href="/dashboard">Dashboard</a>`);
+    } catch (e) { res.status(500).send("Update Fehler."); }
 });
 
-app.listen(port, () => console.log(`Server läuft`));
+app.listen(port, () => console.log(`Server läuft auf Port ${port}`));
