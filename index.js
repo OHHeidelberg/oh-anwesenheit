@@ -124,4 +124,4 @@ app.get('/update', async (req, res) => {
     } catch (e) { res.status(500).send("Update Fehler."); }
 });
 
-app.listen(port, () =>
+app.listen(port, () => console.log(`Server läuft`));
