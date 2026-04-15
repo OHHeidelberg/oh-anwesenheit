@@ -30,7 +30,7 @@ const sharedStyles = `
       h1 { color: #1d1d1f; margin-bottom: 30px; font-size: 2.2rem; font-weight: 800; }
       .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 25px; width: 100%; }
       .card { background: white; padding: 25px; border-radius: 24px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); }
-      .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; background: #f8f8f8; border: 4px solid #fff; }
+      .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; background: #f8f8f8; border: 4px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
       .name { font-weight: bold; font-size: 1.25rem; color: #1d1d1f; display: block; margin-bottom: 12px; }
       .status-badge { display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 30px; font-size: 0.9rem; font-weight: 700; }
       .emoji { font-size: 1.2rem; margin-right: 8px; }
@@ -43,18 +43,20 @@ const sharedStyles = `
 `;
 
 async function getSlackDetails(slackId) {
-    if (!slackId || slackId.length < 5) return { text: "ID fehlt", emoji: '❓', color: "bg-away" };
+    if (!slackId || slackId.length < 5) return { text: "ID fehlt", emoji: '❓', color: "bg-away", photo: "" };
     
     try {
         const headers = { Authorization: `Bearer ${SLACK_TOKEN}` };
         
-        // Wir fragen nacheinander ab, um Timeouts zu vermeiden
         const profileRes = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId.trim()}`, { headers }).catch(() => ({ data: { ok: false } }));
         const presenceRes = await axios.get(`https://slack.com/api/users.getPresence?user=${slackId.trim()}`, { headers }).catch(() => ({ data: { ok: false } }));
 
         let isOnline = presenceRes.data.ok ? presenceRes.data.presence === 'active' : false;
         let statusText = profileRes.data.ok ? profileRes.data.profile.status_text : "";
         let rawEmoji = profileRes.data.ok ? profileRes.data.profile.status_emoji : "";
+        
+        // HIER NEU: Das Profilbild von Slack holen (image_192 ist eine gute Größe)
+        let photo = profileRes.data.ok ? profileRes.data.profile.image_192 : "https://via.placeholder.com/100";
 
         let text = statusText;
         let color = "bg-away";
@@ -70,9 +72,9 @@ async function getSlackDetails(slackId) {
             text = "Abwesend";
         }
 
-        return { text, emoji: translateEmoji(rawEmoji, isOnline), color };
+        return { text, emoji: translateEmoji(rawEmoji, isOnline), color, photo };
     } catch (e) {
-        return { text: "Fehler", emoji: '⚠️', color: "bg-away" };
+        return { text: "Fehler", emoji: '⚠️', color: "bg-away", photo: "" };
     }
 }
 
@@ -82,13 +84,13 @@ app.get('/dashboard', async (req, res) => {
         const rows = parse(response.data, { from_line: 2, skip_empty_lines: true, trim: true });
 
         let cardsHtml = "";
-        // Wir nutzen eine normale Schleife für bessere Stabilität
         for (const row of rows) {
-            console.log(`Lade Status für: ${row[0]}`); // Debugging für Render Logs
+            console.log(`Lade Daten für: ${row[0]}`);
             const status = await getSlackDetails(row[1]);
+            
             cardsHtml += `
                 <div class="card">
-                    <img src="${row[2] || 'https://via.placeholder.com/100'}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
+                    <img src="${status.photo}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
                     <span class="name">${row[0]}</span>
                     <div class="status-badge ${status.color}">
                         <span class="emoji">${status.emoji}</span>
@@ -98,8 +100,7 @@ app.get('/dashboard', async (req, res) => {
         }
         res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Stand: ${new Date().toLocaleTimeString('de-DE')}</div></div>`);
     } catch (error) {
-        console.error("Dashboard Fehler:", error.message);
-        res.status(500).send("Das Dashboard konnte nicht geladen werden. Bitte Seite neu laden.");
+        res.status(500).send("Fehler beim Laden.");
     }
 });
 
@@ -123,4 +124,4 @@ app.get('/update', async (req, res) => {
     } catch (e) { res.status(500).send("Update Fehler."); }
 });
 
-app.listen(port, () => console.log(`Server läuft auf Port ${port}`));
+app.listen(port, () =>
