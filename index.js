@@ -7,21 +7,42 @@ const port = process.env.PORT || 3000;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 
+// Hilfsfunktion: Wandelt Slack-Emoji-Shortcodes in echte Emojis um
+function translateEmoji(slackEmoji) {
+    if (!slackEmoji) return '';
+    const emojiMap = {
+        ':office:': '🏢',
+        ':house_with_garden:': '🏡',
+        ':house:': '🏠',
+        ':palm_tree:': '🌴',
+        ':wave:': '👋',
+        ':beach_with_umbrella:': '🏖️',
+        ':coffee:': '☕',
+        ':stuck_out_tongue:': '😋',
+        ':mountain:': '⛰️'
+    };
+    return emojiMap[slackEmoji] || '📍'; // Fallback-Emoji, falls Code unbekannt
+}
+
 const sharedStyles = `
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="60">
     <style>
-      body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-      .container { width: 100%; max-width: 900px; text-align: center; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; margin-top: 20px; }
-      .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eee; }
-      .avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; background: #f8f8f8; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
-      .name { font-weight: bold; font-size: 1.2rem; color: #1d1d1f; display: block; margin-bottom: 10px; }
-      .status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
+      body { font-family: -apple-system, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+      .container { width: 100%; max-width: 1000px; text-align: center; }
+      h1 { color: #1d1d1f; margin-bottom: 30px; font-size: 2.2rem; font-weight: 800; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 25px; width: 100%; }
+      .card { background: white; padding: 25px; border-radius: 24px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); transition: all 0.3s ease; border: 1px solid rgba(0,0,0,0.03); }
+      .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; background: #f8f8f8; border: 4px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+      .name { font-weight: bold; font-size: 1.25rem; color: #1d1d1f; display: block; margin-bottom: 12px; }
+      .status-badge { display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 30px; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.3px; }
+      .emoji { font-size: 1.2rem; margin-right: 8px; }
       .bg-buro { background: #e6f4ea; color: #1e7e34; }
       .bg-home { background: #fff9e6; color: #947600; }
       .bg-weg { background: #f5f5f7; color: #86868b; }
+      .update-info { margin-top: 40px; color: #bbb; font-size: 0.8rem; }
     </style>
   </head>
 `;
@@ -30,61 +51,73 @@ async function getSheetData() {
     try {
         const response = await axios.get(CSV_URL);
         return parse(response.data, { 
-            columns: header => header.map(h => h.trim().toLowerCase()), // Macht alle Spaltennamen klein und sauber
-            skip_empty_lines: true 
+            from_line: 2, 
+            skip_empty_lines: true,
+            trim: true
         });
     } catch (e) { return null; }
 }
 
 async function getSlackStatus(slackId) {
-    if (!slackId || slackId.length < 5) return { text: "Keine ID im Sheet", color: "bg-weg" };
+    if (!slackId || slackId.length < 5) return { text: "ID fehlt", emoji: '❓', color: "bg-weg" };
     try {
         const res = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId.trim()}`, {
             headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
         });
         if (res.data.ok) {
             const text = res.data.profile.status_text || "Verfügbar";
+            const rawEmoji = res.data.profile.status_emoji || "";
             let color = "bg-weg";
             if (text.toLowerCase().includes("büro")) color = "bg-buro";
             if (text.toLowerCase().includes("homeoffice")) color = "bg-home";
-            return { text, color };
+            
+            return { 
+                text, 
+                emoji: translateEmoji(rawEmoji), 
+                color 
+            };
         }
     } catch (e) { }
-    return { text: "Status unbekannt", color: "bg-weg" };
+    return { text: "Offline", emoji: '☁️', color: "bg-weg" };
 }
 
 app.get('/dashboard', async (req, res) => {
-    const team = await getSheetData();
-    if (!team) return res.send("Fehler beim Laden des Sheets.");
+    const rows = await getSheetData();
+    if (!rows) return res.send("Fehler: Google Sheet nicht erreichbar.");
 
     let cardsHtml = "";
-    for (const m of team) {
-        // Sucht die Spalte, egal ob sie "Name", "name" oder "NAME" heißt
-        const name = m.name || m.mitarbeiter || "Unbekannt";
-        const sID = m.slackid || m.id || m['slack-id'];
-        const foto = m.fotourl || m.foto || m.bild;
+    for (const row of rows) {
+        const name = row[0];
+        const sID = row[1];
+        const foto = row[2];
 
         const status = await getSlackStatus(sID);
 
         cardsHtml += `
             <div class="card">
-                <img src="${foto || 'https://via.placeholder.com/90'}" class="avatar" onerror="this.src='https://via.placeholder.com/90'">
+                <img src="${foto || 'https://via.placeholder.com/100'}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
                 <span class="name">${name}</span>
-                <div class="status-badge ${status.color}">${status.text}</div>
+                <div class="status-badge ${status.color}">
+                    <span class="emoji">${status.emoji}</span>
+                    <span>${status.text}</span>
+                </div>
             </div>`;
     }
 
-    res.send(`${sharedStyles} <div class="container"><h1>Live Status-Board</h1><div class="grid">${cardsHtml}</div></div>`);
+    res.send(`${sharedStyles} 
+        <div class="container">
+            <h1>Team Präsenz</h1>
+            <div class="grid">${cardsHtml}</div>
+            <div class="update-info">Automatische Aktualisierung alle 60 Sekunden</div>
+        </div>`);
 });
 
-// Update-Link bleibt gleich
 app.get('/update', async (req, res) => {
     const { status, user } = req.query;
-    const team = await getSheetData();
-    const person = team ? team.find(m => (m.name || "").toLowerCase() === user.toLowerCase()) : null;
-    const sID = person ? (person.slackid || person.id) : null;
+    const rows = await getSheetData();
+    const personRow = rows ? rows.find(r => r[0].toLowerCase() === user.toLowerCase()) : null;
 
-    if (!sID) return res.status(404).send("User oder SlackID nicht gefunden.");
+    if (!personRow || !personRow[1]) return res.status(404).send("User nicht gefunden.");
 
     let text = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
     let emoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
@@ -93,8 +126,8 @@ app.get('/update', async (req, res) => {
         await axios.post('https://slack.com/api/users.profile.set', {
             profile: { status_text: text, status_emoji: emoji }
         }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
-        res.send("Status aktualisiert! <a href='/dashboard'>Zum Dashboard</a>");
-    } catch (e) { res.status(500).send("Slack Fehler"); }
+        res.send(`<h1>Erfolg!</h1><p>${personRow[0]} ist jetzt ${text || 'Abgemeldet'}.</p><br><a href="/dashboard">Zurück zum Dashboard</a>`);
+    } catch (e) { res.status(500).send("Slack API Fehler."); }
 });
 
-app.listen(port, () => console.log(`Online auf Port ${port}`));
+app.listen(port, () => console.log(`Dashboard aktiv auf Port ${port}`));
