@@ -7,18 +7,12 @@ const port = process.env.PORT || 3000;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 
-// Hilfe: Wandelt Slack-Emoji-Codes in Symbole um
 function translateEmoji(slackEmoji, isOnline) {
     if (slackEmoji) {
         const emojiMap = {
-            ':office:': '🏢',
-            ':house_with_garden:': '🏡',
-            ':house:': '🏠',
-            ':palm_tree:': '🌴',
-            ':wave:': '👋',
-            ':beach_with_umbrella:': '🏖️',
-            ':coffee:': '☕',
-            ':stuck_out_tongue:': '😋'
+            ':office:': '🏢', ':house_with_garden:': '🏡', ':house:': '🏠',
+            ':palm_tree:': '🌴', ':wave:': '👋', ':beach_with_umbrella:': '🏖️',
+            ':coffee:': '☕', ':stuck_out_tongue:': '😋'
         };
         return emojiMap[slackEmoji] || '📍';
     }
@@ -57,42 +51,56 @@ async function getSheetData() {
 
 async function getSlackDetails(slackId) {
     if (!slackId || slackId.length < 5) return { text: "ID fehlt", emoji: '❓', color: "bg-away" };
+    
+    let isOnline = false;
+    let statusText = "";
+    let rawEmoji = "";
+
     try {
+        // 1. Profil abrufen (Sollte immer gehen)
         const profileRes = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId.trim()}`, {
             headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
         });
-        
-        const presenceRes = await axios.get(`https://slack.com/api/users.getPresence?user=${slackId.trim()}`, {
-            headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
-        });
-
-        if (profileRes.data.ok && presenceRes.data.ok) {
-            const isOnline = presenceRes.data.presence === 'active';
-            const statusText = profileRes.data.profile.status_text;
-            const rawEmoji = profileRes.data.profile.status_emoji || "";
-
-            let text = statusText;
-            let color = "bg-away";
-
-            if (statusText) {
-                if (statusText.toLowerCase().includes("büro")) color = "bg-active";
-                if (statusText.toLowerCase().includes("homeoffice")) color = "bg-home";
-            } else if (isOnline) {
-                text = "Online";
-                color = "bg-active";
-            } else {
-                text = "Abwesend";
-            }
-
-            return { text, emoji: translateEmoji(rawEmoji, isOnline), color };
+        if (profileRes.data.ok) {
+            statusText = profileRes.data.profile.status_text;
+            rawEmoji = profileRes.data.profile.status_emoji || "";
         }
-    } catch (e) { }
-    return { text: "Offline", emoji: '☁️', color: "bg-away" };
+
+        // 2. Presence abrufen (Nur wenn Berechtigung da ist)
+        try {
+            const presenceRes = await axios.get(`https://slack.com/api/users.getPresence?user=${slackId.trim()}`, {
+                headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
+            });
+            if (presenceRes.data.ok) {
+                isOnline = presenceRes.data.presence === 'active';
+            }
+        } catch (e) {
+            // Falls presence:read fehlt, bleibt isOnline einfach false
+        }
+
+        let text = statusText;
+        let color = "bg-away";
+
+        if (statusText) {
+            if (statusText.toLowerCase().includes("büro")) color = "bg-active";
+            if (statusText.toLowerCase().includes("homeoffice")) color = "bg-home";
+        } else if (isOnline) {
+            text = "Online";
+            color = "bg-active";
+        } else {
+            text = "Abwesend";
+        }
+
+        return { text, emoji: translateEmoji(rawEmoji, isOnline), color };
+
+    } catch (e) {
+        return { text: "Slack Fehler", emoji: '⚠️', color: "bg-away" };
+    }
 }
 
 app.get('/dashboard', async (req, res) => {
     const rows = await getSheetData();
-    if (!rows) return res.send("Fehler beim Laden des Sheets.");
+    if (!rows) return res.send("Google Sheet nicht erreichbar.");
 
     let cardsHtml = "";
     for (const row of rows) {
@@ -107,14 +115,14 @@ app.get('/dashboard', async (req, res) => {
                 </div>
             </div>`;
     }
-    res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Letztes Update: ${new Date().toLocaleTimeString()}</div></div>`);
+    res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Update: ${new Date().toLocaleTimeString()}</div></div>`);
 });
 
 app.get('/update', async (req, res) => {
     const { status, user } = req.query;
     const rows = await getSheetData();
     const personRow = rows ? rows.find(r => r[0].toLowerCase() === user.toLowerCase()) : null;
-    if (!personRow) return res.status(404).send("User nicht gefunden.");
+    if (!personRow) return res.status(404).send("Mitarbeiter nicht gefunden.");
 
     let text = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
     let emoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
@@ -124,7 +132,7 @@ app.get('/update', async (req, res) => {
             profile: { status_text: text, status_emoji: emoji }
         }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         res.send(`Status für ${personRow[0]} aktualisiert. <a href="/dashboard">Dashboard</a>`);
-    } catch (e) { res.status(500).send("Fehler."); }
+    } catch (e) { res.status(500).send("Slack Update fehlgeschlagen."); }
 });
 
-app.listen(port, () => console.log(`Server läuft auf Port ${port}`));
+app.listen(port, () => console.log(`Server läuft`));
