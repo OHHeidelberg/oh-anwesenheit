@@ -148,4 +148,7 @@ app.get('/update', async (req, res) => {
     } catch (e) { res.status(500).send("Update Fehler."); }
 });
 
-app.listen(port, () => console.log(`Server läuft`));
+// WICHTIG: Auf 0.0.0.0 binden, damit Render den Service erkennt
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Server läuft auf Port ${port} und ist bereit.`);
+});
