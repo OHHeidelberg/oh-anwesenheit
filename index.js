@@ -3,20 +3,20 @@ const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Hier holen wir uns die Daten sicher aus den Render-Einstellungen
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const USER_ID = 'U05SKMLDKCL';
 
+// Hier speichern wir die Zustände (im echten Betrieb wäre das eine DB)
+let anwesenheit = {
+  "Chef": { status: "weg", lastUpdate: new Date() }
+};
+
 app.get('/', (req, res) => {
-  res.send('Der Status-Server ist bereit und wartet auf Scans!');
+  res.send('Server läuft! Nutze /status-einfach oder /status-details zur Anzeige.');
 });
 
 app.get('/update', async (req, res) => {
-  const { status } = req.query;
-
-  if (!SLACK_TOKEN) {
-    return res.status(500).send('Fehler: Slack-Token nicht konfiguriert!');
-  }
+  const { status, user = "Chef" } = req.query;
 
   let statusText = "";
   let statusEmoji = "";
@@ -27,46 +27,53 @@ app.get('/update', async (req, res) => {
   } else if (status === 'homeoffice') {
     statusText = "Homeoffice";
     statusEmoji = ":house_with_garden:";
+  } else if (status === 'urlaub') {
+    statusText = "Im Urlaub";
+    statusEmoji = ":palm_tree:";
   } else if (status === 'weg') {
     statusText = ""; 
     statusEmoji = ""; 
-  } else {
-    return res.status(400).send('Unbekannter Status.');
   }
+
+  // Lokal speichern für die Anzeige
+  anwesenheit[user] = { status: status, lastUpdate: new Date() };
 
   try {
-    // 1. Status bei Slack setzen
+    // Slack Update
     await axios.post('https://slack.com/api/users.profile.set', {
-      profile: {
-        status_text: statusText,
-        status_emoji: statusEmoji,
-        status_expiration: 0
-      }
+      profile: { status_text: statusText, status_emoji: statusEmoji, status_expiration: 0 }
     }, {
-      headers: { 
-        'Authorization': `Bearer ${SLACK_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Authorization': `Bearer ${SLACK_TOKEN}`, 'Content-Type': 'application/json' }
     });
 
-    // 2. Präsenz setzen
-    const presence = (status === 'weg') ? 'away' : 'auto';
-    await axios.post('https://slack.com/api/users.setPresence', 
-      { presence: presence }, 
-      { 
-        headers: { 
-          'Authorization': `Bearer ${SLACK_TOKEN}`,
-          'Content-Type': 'application/json'
-        } 
-      }
-    );
+    const presence = (status === 'weg' || status === 'urlaub') ? 'away' : 'auto';
+    await axios.post('https://slack.com/api/users.setPresence', { presence: presence }, {
+      headers: { 'Authorization': `Bearer ${SLACK_TOKEN}`, 'Content-Type': 'application/json' }
+    });
 
-    res.send(`<h1>Erfolg!</h1><p>Slack-Status wurde auf <b>${statusText || 'Verfügbar'}</b> gesetzt.</p>`);
-    
+    res.send(`<h1>Update für ${user}</h1><p>Status: ${statusText || 'Abwesend'}</p>`);
   } catch (error) {
-    console.error('Slack API Fehler:', error.response ? error.response.data : error.message);
-    res.status(500).send('Fehler beim Slack-Update.');
+    res.status(500).send('Slack Fehler');
   }
+});
+
+// VERSION 1: Einfache Anzeige (Da / Nicht da)
+app.get('/status-einfach', (req, res) => {
+  let html = "<h1>Wer ist im Haus?</h1><ul>";
+  for (const [name, data] of Object.entries(anwesenheit)) {
+    const istDa = (data.status === 'da');
+    html += `<li>${name}: ${istDa ? "✅ DA" : "❌ NICHT DA"}</li>`;
+  }
+  res.send(html + "</ul>");
+});
+
+// VERSION 2: Detail-Anzeige
+app.get('/status-details', (req, res) => {
+  let html = "<h1>Detaillierte Übersicht</h1><table border='1'><tr><th>Name</th><th>Status</th><th>Zuletzt gesehen</th></tr>";
+  for (const [name, data] of Object.entries(anwesenheit)) {
+    html += `<tr><td>${name}</td><td>${data.status}</td><td>${data.lastUpdate.toLocaleTimeString()}</td></tr>`;
+  }
+  res.send(html + "</table>");
 });
 
 app.listen(port, () => {
