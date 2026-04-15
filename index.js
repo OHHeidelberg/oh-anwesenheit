@@ -1,50 +1,84 @@
 const express = require('express');
 const axios = require('axios');
+const { parse } = require('csv-parse/sync');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Konfiguration
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
-const USER_ID = 'U05SKMLDKCL'; // Deine ID
-const MEINE_URL = 'https://mein-status-tool.onrender.com'; 
+const CSV_URL = 'DEIN_VERÖFFENTLICHTER_CSV_LINK';
 
-// Speicher für die Zustände (wird bei Server-Neustart zurückgesetzt)
-let anwesenheit = {
-  "Chef": { status: "weg", lastUpdate: new Date() }
-};
-
-// HTML Header mit CSS & Auto-Refresh (30 Sek)
+// Design-Einstellungen
 const header = `
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="30"> 
+    <meta http-equiv="refresh" content="30">
     <style>
-      body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
-      .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
-      h1 { color: #1d1d1f; font-size: 1.4rem; text-align: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-      .user-row { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #f0f0f0; }
-      .badge { padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
-      .status-da { background: #e6f4ea; color: #1e7e34; }
-      .status-homeoffice { background: #fff9e6; color: #947600; }
-      .status-weg { background: #fce8e8; color: #c62828; }
-      .status-urlaub { background: #e8f4fd; color: #1565c0; }
-      .time { color: #888; font-size: 0.8rem; }
-      .footer { text-align: center; margin-top: 20px; font-size: 0.7rem; color: #bbb; }
+      body { font-family: sans-serif; background: #f4f7f9; display: flex; justify-content: center; padding: 20px; }
+      .container { width: 100%; max-width: 600px; }
+      .card { background: white; border-radius: 15px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; align-items: center; }
+      .avatar { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; margin-right: 20px; border: 2px solid #eee; }
+      .info { flex-grow: 1; }
+      .name { font-weight: bold; font-size: 1.2rem; color: #333; }
+      .badge { padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; float: right; }
+      .status-da { background: #d4edda; color: #155724; }
+      .status-homeoffice { background: #fff3cd; color: #856404; }
+      .status-weg { background: #f8d7da; color: #721c24; }
+      h1 { text-align: center; color: #2c3e50; }
     </style>
   </head>
 `;
 
-app.get('/', (req, res) => {
-  res.send(`${header} <div class="card"><h1>Status Server</h1><p align="center">System ist bereit.<br><br><a href="/status-details" style="color: #007aff; text-decoration: none;">👉 Zur Status-Tafel</a></p></div>`);
+// Funktion zum Laden der Mitarbeiter-Daten aus dem Sheet
+async function getMitarbeiter() {
+    try {
+        const response = await axios.get(CSV_URL);
+        const records = parse(response.data, { columns: true, skip_empty_lines: true });
+        return records;
+    } catch (e) {
+        console.error("Fehler beim Laden des Sheets", e);
+        return [];
+    }
+}
+
+app.get('/status-details', async (req, res) => {
+    const mitarbeiter = await getMitarbeiter();
+    let html = `${header} <div class="container"><h1>Team Status</h1>`;
+    
+    mitarbeiter.forEach(m => {
+        const s = m.Status ? m.Status.toLowerCase() : 'weg';
+        html += `
+            <div class="card">
+                <img src="${m.FotoURL || 'https://via.placeholder.com/60'}" class="avatar">
+                <div class="info">
+                    <span class="name">${m.Name}</span>
+                    <span class="badge status-${s}">${m.Status || 'Abwesend'}</span>
+                </div>
+            </div>`;
+    });
+    
+    res.send(html + "</div>");
 });
 
-// Update-Endpunkt für NFC / QR
 app.get('/update', async (req, res) => {
-  const { status, user = "Chef" } = req.query;
-  let statusText = "";
-  let statusEmoji = "";
+    const { status, user } = req.query;
+    const mitarbeiter = await getMitarbeiter();
+    const person = mitarbeiter.find(m => m.Name.toLowerCase() === user.toLowerCase());
 
-  if (status === 'da') { statusText = "Im Büro"; statusEmoji = ":office:"; }
-  else if (status === 'homeoffice') { statusText = "Homeoffice"; statusEmoji = ":house_with_garden:"; }
-  else if (status === 'urlaub')
+    if (!person) return res.status(404).send("User nicht im Sheet gefunden.");
+
+    let sText = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
+    let sEmoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
+
+    try {
+        await axios.post('https://slack.com/api/users.profile.set', {
+            profile: { status_text: sText, status_emoji: sEmoji, status_expiration: 0 }
+        }, { headers: { 'Authorization': `Bearer ${SLACK_TOKEN}` } });
+
+        res.send(`<h1>Erfolg!</h1><p>${person.Name} ist jetzt ${sText || 'Abgemeldet'}.</p>`);
+    } catch (e) {
+        res.status(500).send("Slack Fehler");
+    }
+});
+
+app.listen(port, () => console.log(`Läuft auf ${port}`));
