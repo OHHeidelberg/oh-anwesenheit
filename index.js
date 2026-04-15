@@ -25,27 +25,49 @@ const sharedStyles = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="60">
     <style>
-      body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-      .container { width: 95%; max-width: 1400px; text-align: center; }
-      h1 { color: #1d1d1f; margin-bottom: 30px; font-size: 2rem; font-weight: 800; }
+      body { 
+        font-family: -apple-system, system-ui, sans-serif; 
+        background: #f0f2f5; 
+        margin: 0; 
+        padding: 10px; /* Minimaler Abstand zum Bildschirmrand */
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+      }
+      .container { 
+        width: 98%; /* Fast die gesamte Breite nutzen */
+        max-width: 100%; /* Kein künstliches Limit mehr */
+        text-align: center; 
+      }
+      h1 { color: #1d1d1f; margin-bottom: 20px; font-size: 1.8rem; font-weight: 800; }
       
-      /* Optimiertes Grid für bis zu 6 Personen nebeneinander */
       .grid { 
         display: grid; 
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
-        gap: 20px; 
+        /* Verringerte Mindestbreite, damit 6 oder mehr Karten nebeneinander passen */
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); 
+        gap: 15px; 
         width: 100%; 
       }
       
-      .card { background: white; padding: 15px; border-radius: 20px; box-shadow: 0 8px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; }
-      .avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 12px; background: #f8f8f8; border: 3px solid #fff; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-      .name { font-weight: bold; font-size: 1.1rem; color: #1d1d1f; display: block; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-      .status-badge { display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; width: 90%; }
-      .emoji { font-size: 1rem; margin-right: 6px; }
+      .card { 
+        background: white; 
+        padding: 15px 10px; 
+        border-radius: 18px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+        border: 1px solid rgba(0,0,0,0.03); 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+      }
+      .avatar { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; background: #f8f8f8; border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+      .name { font-weight: bold; font-size: 1rem; color: #1d1d1f; display: block; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+      .status-badge { display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 15px; font-size: 0.75rem; font-weight: 700; width: 95%; }
+      .emoji { font-size: 0.9rem; margin-right: 4px; }
+      
       .bg-active { background: #e6f4ea; color: #1e7e34; } 
       .bg-home { background: #fff9e6; color: #947600; }
       .bg-away { background: #f5f5f7; color: #86868b; }
-      .info { font-size: 0.7rem; color: #bbb; margin-top: 30px; }
+      .info { font-size: 0.65rem; color: #bbb; margin-top: 20px; }
     </style>
   </head>
 `;
@@ -93,4 +115,37 @@ app.get('/dashboard', async (req, res) => {
             cardsHtml += `
                 <div class="card">
                     <img src="${status.photo}" class="avatar" onerror="this.src='https://via.placeholder.com/100'">
-                    <span class="name">${row[0]}
+                    <span class="name">${row[0]}</span>
+                    <div class="status-badge ${status.color}">
+                        <span class="emoji">${status.emoji}</span>
+                        <span>${status.text}</span>
+                    </div>
+                </div>`;
+        }
+        res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div><div class="info">Stand: ${new Date().toLocaleTimeString('de-DE')}</div></div>`);
+    } catch (error) {
+        res.status(500).send("Fehler beim Laden.");
+    }
+});
+
+app.get('/update', async (req, res) => {
+    const { status, user } = req.query;
+    try {
+        const sheetRes = await axios.get(CSV_URL);
+        const rows = parse(sheetRes.data, { from_line: 2, skip_empty_lines: true, trim: true });
+        const person = rows.find(r => r[0].toLowerCase() === user.toLowerCase());
+
+        if (!person) return res.status(404).send("User nicht gefunden.");
+
+        const text = status === 'da' ? "Im Büro" : (status === 'homeoffice' ? "Homeoffice" : "");
+        const emoji = status === 'da' ? ":office:" : (status === 'homeoffice' ? ":house_with_garden:" : "");
+
+        await axios.post('https://slack.com/api/users.profile.set', {
+            profile: { status_text: text, status_emoji: emoji }
+        }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+
+        res.send(`Status aktualisiert. <a href="/dashboard">Dashboard</a>`);
+    } catch (e) { res.status(500).send("Update Fehler."); }
+});
+
+app.listen(port, () => console.log(`Server läuft`));
