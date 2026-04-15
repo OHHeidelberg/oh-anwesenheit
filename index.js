@@ -5,7 +5,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
-const CSV_URL = 'DEIN_VERÖFFENTLICHTER_CSV_LINK';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing';
 
 // Design-Einstellungen
 const header = `
