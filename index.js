@@ -32,7 +32,6 @@ const sharedStyles = `
       .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; width: 100%; }
       .card { background: white; padding: 15px 10px; border-radius: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; }
       
-      /* Avatar mit dynamischer Rahmenfarbe */
       .avatar { 
         width: 75px; 
         height: 75px; 
@@ -40,15 +39,21 @@ const sharedStyles = `
         object-fit: cover; 
         margin-bottom: 10px; 
         background: #f8f8f8; 
-        border: 4px solid #fff; /* Standard */
+        border: 4px solid #fff;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1); 
-        transition: border-color 0.3s ease;
+        transition: all 0.4s ease; /* Weicher Übergang beim Statuswechsel */
       }
       
-      /* Rahmenfarben passend zum Status */
-      .border-active { border-color: #28a745 !important; } /* Grün */
-      .border-home { border-color: #ffc107 !important; }   /* Gelb */
-      .border-away { border-color: #d1d1d6 !important; }   /* Grau */
+      /* Status-Effekte für das Foto */
+      .border-active { border-color: #28a745 !important; filter: grayscale(0); opacity: 1; } 
+      .border-home { border-color: #ffc107 !important; filter: grayscale(0); opacity: 1; }
+      
+      /* Ausgrauen und Verblassen bei Abwesenheit */
+      .border-away { 
+        border-color: #d1d1d6 !important; 
+        filter: grayscale(100%); /* Schwarz-Weiß */
+        opacity: 0.5;            /* Verblassen auf 50% */
+      }
 
       .name { font-weight: bold; font-size: 1rem; color: #1d1d1f; display: block; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
       .status-badge { display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 15px; font-size: 0.75rem; font-weight: 700; width: 95%; }
