@@ -29,14 +29,38 @@ const sharedStyles = `
       body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
       .container { width: 98%; max-width: 100%; text-align: center; }
       h1 { color: #1d1d1f; margin-bottom: 20px; font-size: 1.8rem; font-weight: 800; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; width: 100%; }
-      .card { background: white; padding: 15px 10px; border-radius: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; }
+      
+      .grid { 
+        display: grid; 
+        /* Sorgt dafür, dass die Karten im Container zentriert werden */
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); 
+        justify-content: center; 
+        gap: 15px; 
+        width: 100%; 
+      }
+      
+      .card { 
+        background: white; 
+        padding: 15px 10px; 
+        border-radius: 18px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+        border: 1px solid rgba(0,0,0,0.03); 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        /* Verhindert, dass Karten in leeren Reihen unendlich breit werden */
+        max-width: 200px; 
+        margin: 0 auto;
+      }
+
       .avatar { width: 75px; height: 75px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; background: #f8f8f8; border: 4px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); transition: all 0.4s ease; }
       .border-active { border-color: #28a745 !important; filter: grayscale(0); opacity: 1; } 
       .border-home { border-color: #ffc107 !important; filter: grayscale(0); opacity: 1; }
       .border-away { border-color: #d1d1d6 !important; filter: grayscale(100%); opacity: 0.5; }
+      
       .name { font-weight: bold; font-size: 1rem; color: #1d1d1f; display: block; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
       .status-badge { display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 15px; font-size: 0.75rem; font-weight: 700; width: 95%; }
+      
       .bg-active { background: #e6f4ea; color: #1e7e34; } 
       .bg-home { background: #fff9e6; color: #947600; }
       .bg-away { background: #f5f5f7; color: #86868b; }
@@ -62,7 +86,7 @@ async function getSlackDetails(slackId) {
         let color = "bg-away";
         let border = "border-away";
         let text = statusText || (isOnline ? "Online" : "Abwesend");
-        let rank = 5; // Standard: Abwesend
+        let rank = 5;
 
         if (statusText) {
             const lower = statusText.toLowerCase();
@@ -86,16 +110,13 @@ app.get('/dashboard', async (req, res) => {
         const response = await axios.get(CSV_URL, { timeout: 5000 });
         const rows = parse(response.data, { from_line: 2, skip_empty_lines: true, trim: true });
 
-        // 1. Alle Status-Daten parallel sammeln
         const teamData = await Promise.all(rows.map(async (row) => {
             const details = await getSlackDetails(row[1]);
             return { name: row[0], ...details };
         }));
 
-        // 2. Sortieren nach Rang
         teamData.sort((a, b) => a.rank - b.rank);
 
-        // 3. HTML bauen
         let cardsHtml = "";
         for (const person of teamData) {
             cardsHtml += `
