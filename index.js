@@ -45,14 +45,13 @@ app.get('/dashboard', async (req, res) => {
                 <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
             </div>`).join('');
         
-        // ZEITZONE BERLIN IMPLEMENTIERUNG
         const time = new Date().toLocaleTimeString('de-DE', { 
             hour: '2-digit', 
             minute: '2-digit', 
             timeZone: 'Europe/Berlin' 
         });
 
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Team Präsenz</h1><div class="grid">${cards}</div><div class="info">Letzte Aktualisierung: ${time} Uhr (Berlin)</div></div></body></html>`);
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Team Präsenz</h1><div class="grid">${cards}</div><div class="info">Letzte Aktualisierung: ${time} Uhr</div></div></body></html>`);
     } catch (e) { res.send("Fehler"); }
 });
 
@@ -63,7 +62,7 @@ app.get('/update', async (req, res) => {
     try {
         await axios.post('https://slack.com/api/users.profile.set', { profile: { status_text: val[0], status_emoji: val[1] } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         res.send("Update OK. <a href='/dashboard'>Zurück</a>");
-    } catch (e) { res.send("Update Fehler"); }
+    } catch (e) { res.send("Fehler"); }
 });
 
 app.get('/', (req, res) => res.redirect('/dashboard'));
