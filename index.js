@@ -77,3 +77,18 @@ app.get('/dashboard', async (req, res) => {
                 <div class="status-badge ${p.color}"><span>${p.emoji} ${p.text}</span></div>
             </div>`).join('');
         res.send(`${sharedStyles}<div class="container"><h1>Team Präsenz</h1><div class="grid">${cardsHtml}</div></div>`);
+    } catch (e) { res.status(500).send("Fehler"); }
+});
+
+app.get('/update', async (req, res) => {
+    const { status, user } = req.query;
+    const statusMap = { 'da': { t: "Im Büro", e: ":office:" }, 'homeoffice': { t: "Homeoffice", e: ":house_with_garden:" }, 'krank': { t: "Krank", e: ":face_with_thermometer:" }, 'urlaub': { t: "Im Urlaub", e: ":palm_tree:" } };
+    const up = statusMap[status] || { t: "Abwesend", e: ":wave:" };
+    try {
+        await axios.post('https://slack.com/api/users.profile.set', { profile: { status_text: up.t, status_emoji: up.e } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+        res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:50px;"><h1>✅ OK</h1><p>${user} ist jetzt ${up.t}</p><a href="/dashboard">Dashboard</a></body></html>`);
+    } catch (e) { res.status(500).send("Fehler"); }
+});
+
+app.get('/', (req, res) => res.redirect('/dashboard'));
+app.listen(port, '0.0.0.0', () => console.log(`Online auf ${port}`));
