@@ -1,39 +1,39 @@
-app.get('/update', async (req, res) => {
-    const { status, user } = req.query;
-    try {
-        const sheetRes = await axios.get(CSV_URL);
-        const rows = parse(sheetRes.data, { from_line: 2, skip_empty_lines: true, trim: true });
-        const person = rows.find(r => r[0].toLowerCase() === user.toLowerCase());
+const express = require('express');
+const axios = require('axios');
+const { parse } = require('csv-parse/sync');
+const app = express();
+const port = process.env.PORT || 10000;
 
-        if (!person) return res.status(404).send("User nicht gefunden.");
+const SLACK_TOKEN = process.env.SLACK_TOKEN;
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 
-        // Mapping für die verschiedenen QR-Code Status
-        const statusMap = {
-            'da': { text: "Im Büro", emoji: ":office:" },
-            'homeoffice': { text: "Homeoffice", emoji: ":house_with_garden:" },
-            'krank': { text: "Krank", emoji: ":face_with_thermometer:" },
-            'urlaub': { text: "Im Urlaub", emoji: ":palm_tree:" },
-            'weg': { text: "Abwesend", emoji: ":wave:" }
+// Hilfsfunktion: Emojis übersetzen
+function translateEmoji(slackEmoji, isOnline) {
+    if (slackEmoji) {
+        const emojiMap = {
+            ':office:': '🏢', ':house_with_garden:': '🏡', ':house:': '🏠',
+            ':palm_tree:': '🌴', ':computer:': '💻', ':car:': '🚗',
+            ':oncoming_automobile:': '🚘', ':bus:': '🚌', ':train:': '🚆',
+            ':walking:': '🚶', ':coffee:': '☕', ':face_with_thermometer:': '🤒'
         };
-
-        const update = statusMap[status] || { text: "", emoji: "" };
-
-        await axios.post('https://slack.com/api/users.profile.set', {
-            profile: { 
-                status_text: update.text, 
-                status_emoji: update.emoji,
-                status_expiration: 0 // Status bleibt bis zur manuellen Änderung
-            }
-        }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
-
-        res.send(`
-            <div style="font-family:sans-serif; text-align:center; padding:50px;">
-                <h1>Erledigt!</h1>
-                <p>Dein Status wurde auf <b>${update.text}</b> gesetzt.</p>
-                <a href="/dashboard" style="color:#007aff;">Zum Dashboard</a>
-            </div>
-        `);
-    } catch (e) { 
-        res.status(500).send("Fehler beim Update: " + e.message); 
+        return emojiMap[slackEmoji] || '📍';
     }
-});
+    return isOnline ? '🟢' : '⚪';
+}
+
+const sharedStyles = `
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="60">
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+      .container { width: 98%; max-width: 100%; text-align: center; }
+      h1 { color: #1d1d1f; margin-bottom: 20px; font-size: 1.8rem; font-weight: 800; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); justify-content: center; gap: 15px; width: 100%; }
+      .card { background: white; padding: 15px 10px; border-radius: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; max-width: 200px; margin: 0 auto; }
+      .avatar { width: 75px; height: 75px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; background: #f8f8f8; border: 4px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); transition: all 0.4s ease; }
+      .border-active { border-color: #28a745 !important; filter: grayscale(0); opacity: 1; } 
+      .border-home { border-color: #ffc107 !important; filter: grayscale(0); opacity: 1; }
+      .border-away { border-color: #d1d1d6 !important; filter: grayscale(100%); opacity: 0.5; }
+      .name { font-weight: bold; font-size: 1rem; color: #1d1d1f; display: block; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow:
