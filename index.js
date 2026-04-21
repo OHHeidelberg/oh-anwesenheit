@@ -9,7 +9,7 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf
 
 const styles = `
 <style>
-  body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:10px 10px 100px 10px}
+  body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:10px 10px 120px 10px}
   .container{width:98%;text-align:center}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
@@ -23,20 +23,20 @@ const styles = `
   .bg-away{background:#f5f5f7;color:#86868b}
   .info{margin-top:20px;font-size:0.7rem;color:#888}
   
-  /* Fixierte Leiste unten */
   .footer-bar {
     position: fixed; bottom: 0; left: 0; width: 100%;
     background: #fff; border-top: 1px solid #ddd;
-    padding: 15px; display: flex; justify-content: center; align-items: center;
-    gap: 10px; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 1000;
+    padding: 20px; display: flex; justify-content: center; align-items: center;
+    gap: 10px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000;
   }
-  select, button {
-    padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.9rem;
+  select, button { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
+  button { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 100px; }
+  
+  /* Mobile Optimierung für die Leiste */
+  @media (max-width: 600px) {
+    .footer-bar { flex-direction: column; padding: 10px; }
+    select, button { width: 90%; }
   }
-  button {
-    background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold;
-  }
-  button:hover { background: #0056b3; }
 </style>`;
 
 async function getStatus(id) {
@@ -44,8 +44,8 @@ async function getStatus(id) {
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
         const [p, s] = await Promise.all([
-            axios.get(`https://slack.com/api/users.profile.get?user=${id}`, { headers: h, timeout: 4000 }).catch(() => ({data:{}})),
-            axios.get(`https://slack.com/api/users.getPresence?user=${id}`, { headers: h, timeout: 4000 }).catch(() => ({data:{}}))
+            axios.get(`https://slack.com/api/users.profile.get?user=${id.trim()}`, { headers: h, timeout: 4000 }).catch(() => ({data:{}})),
+            axios.get(`https://slack.com/api/users.getPresence?user=${id.trim()}`, { headers: h, timeout: 4000 }).catch(() => ({data:{}}))
         ]);
         const prof = p.data.profile || {};
         const online = s.data.presence === 'active';
@@ -55,7 +55,8 @@ async function getStatus(id) {
         if (txt.toLowerCase().includes("büro") || txt.toLowerCase().includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
         else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; }
         else if (txt.toLowerCase().includes("home") || txt.toLowerCase().includes("unterwegs") || txt.toLowerCase().includes("auto")) { 
-            res.c="bg-home"; res.b="border-home"; res.r=3; res.e = txt.toLowerCase().includes("home") ? "🏡" : "🚗";
+            res.c="bg-home"; res.b="border-home"; res.r=3; 
+            res.e = txt.toLowerCase().includes("home") ? "🏡" : "🚗";
         }
         return res;
     } catch (e) { return { t: "Fehler", e: "⚠️", c: "bg-away", b: "border-away", r: 9 }; }
@@ -67,9 +68,7 @@ app.get('/dashboard', async (req, res) => {
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         const data = await Promise.all(rows.map(async r => ({ n: r[0], id: r[1], ...(await getStatus(r[1])) })));
         
-        // Alphabetische Liste für das Dropdown (unabhängig von der Präsenz-Sortierung)
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
-        
         data.sort((a, b) => a.r - b.r);
         
         const cards = data.map(p => `
@@ -80,29 +79,55 @@ app.get('/dashboard', async (req, res) => {
             </div>`).join('');
         
         const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
-
-        // HTML für die Dropdowns
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
         
+        // Das JavaScript sorgt für das Speichern und Laden des Namens
+        const footerScript = `
+            <script>
+                const userSelect = document.getElementById('userSelect');
+                const savedUser = localStorage.getItem('selectedUser');
+                if (savedUser) {
+                    userSelect.value = savedUser;
+                }
+                function saveUser() {
+                    localStorage.setItem('selectedUser', userSelect.value);
+                }
+            </script>
+        `;
+
         const footerForm = `
-            <form action="/update" method="get" class="footer-bar">
-                <select name="user" required>
+            <form action="/update" method="get" class="footer-bar" onsubmit="saveUser()">
+                <select name="user" id="userSelect" required>
                     <option value="" disabled selected>Mitarbeiter wählen</option>
                     ${userOptions}
                 </select>
                 <select name="status" required>
-                    <option value="da">Im Büro</option>
-                    <option value="homeoffice">Homeoffice</option>
-                    <option value="krank">Krank</option>
-                    <option value="urlaub">Urlaub</option>
-                    <option value="weg">Abwesend</option>
+                    <option value="da">🏢 Im Büro</option>
+                    <option value="homeoffice">🏡 Homeoffice</option>
+                    <option value="krank">🤒 Krank</option>
+                    <option value="urlaub">🌴 Urlaub</option>
+                    <option value="weg">⚪ Abwesend</option>
                 </select>
                 <button type="submit">Update</button>
             </form>
         `;
 
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Team Präsenz</h1><div class="grid">${cards}</div><div class="info">Letzte Aktualisierung: ${time} Uhr</div></div>${footerForm}</body></html>`);
-    } catch (e) { res.send("Fehler"); }
+        res.send(`
+            <html>
+                <head><meta http-equiv="refresh" content="60"></head>
+                ${styles}
+                <body>
+                    <div class="container">
+                        <h1>Team Präsenz</h1>
+                        <div class="grid">${cards}</div>
+                        <div class="info">Letzte Aktualisierung: ${time} Uhr</div>
+                    </div>
+                    ${footerForm}
+                    ${footerScript}
+                </body>
+            </html>
+        `);
+    } catch (e) { res.status(500).send("Fehler beim Laden."); }
 });
 
 app.get('/update', async (req, res) => {
@@ -110,18 +135,15 @@ app.get('/update', async (req, res) => {
     const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
     const val = map[status] || ["Abwesend", ":wave:"];
     try {
-        // Person im CSV suchen, um Slack-ID zu finden (falls nötig, hier nutzen wir den Namen zum Matching)
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         const person = rows.find(r => r[0] === user);
         
         if (person) {
             await axios.post('https://slack.com/api/users.profile.set', { 
-                user: person[1].trim(), // Falls dein Bot fremde Profile ändern darf (Admin-Scope nötig)
                 profile: { status_text: val[0], status_emoji: val[1] } 
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
-        
         res.redirect('/dashboard');
     } catch (e) { res.send("Fehler beim Update."); }
 });
