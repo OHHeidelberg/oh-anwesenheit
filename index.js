@@ -64,15 +64,27 @@ async function getStatus(id) {
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
 
-        let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 5 };
+        let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
         
-        // Prioritäten-Sortierung (r): 1=Büro, 2=Online, 3=Besprechung, 4=Home/Mobil, 5=Abwesend
-        if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
-        else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; }
-        else if (lowTxt.includes("besprechung") || lowTxt.includes("meeting") || lowTxt.includes("termin")) { res.c="bg-meeting"; res.b="border-meeting"; res.r=3; res.e="🗓️"; }
-        else if (lowTxt.includes("home") || lowTxt.includes("unterwegs") || lowTxt.includes("mobil")) { 
-            res.c="bg-home"; res.b="border-home"; res.r=4; 
-            res.e = lowTxt.includes("home") ? "🏡" : "🚗";
+        // Neue Prioritäten-Sortierung (r): 
+        // 1=Büro, 2=Online (Grün)
+        // 3=Homeoffice, 4=Unterwegs (Gelb)
+        // 5=Besprechung (Rot)
+        // 6=Abwesend (Grau)
+        if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
+            res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; 
+        }
+        else if (online && !txt) { 
+            res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; 
+        }
+        else if (lowTxt.includes("home")) { 
+            res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; 
+        }
+        else if (lowTxt.includes("unterwegs") || lowTxt.includes("mobil")) { 
+            res.c="bg-home"; res.b="border-home"; res.r=4; res.e="🚗"; 
+        }
+        else if (lowTxt.includes("besprechung") || lowTxt.includes("meeting") || lowTxt.includes("termin")) { 
+            res.c="bg-meeting"; res.b="border-meeting"; res.r=5; res.e="🗓️"; 
         }
         return res;
     } catch (e) { return { t: "Fehler", e: "⚠️", c: "bg-away", b: "border-away", r: 9 }; }
