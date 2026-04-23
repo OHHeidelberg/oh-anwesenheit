@@ -21,13 +21,16 @@ const styles = `
   }
   .nav-btn:hover { background: #f5f5f7; border-color: #bbb; transform: translateY(-1px); }
   
-  .btn-krank { color: #d32f2f; border-color: #ffc107; background: #fff9f9; border-color: #ffcdd2; }
+  .btn-krank { color: #d32f2f; background: #fff9f9; border-color: #ffcdd2; }
   .btn-krank:hover { background: #feebeb; border-color: #d32f2f; }
   
-  .btn-urlaub { color: #007aff; border-color: #c7e0ff; background: #f0f7ff; }
+  .btn-urlaub { color: #007aff; background: #f0f7ff; border-color: #c7e0ff; }
   .btn-urlaub:hover { background: #e0eeff; border-color: #007aff; }
 
-  .btn-docs { color: #555; border-color: #ddd; background: #fafafa; }
+  .btn-server { color: #ed6c02; background: #fffaf0; border-color: #ffe4cc; }
+  .btn-server:hover { background: #fff2e6; border-color: #ed6c02; }
+
+  .btn-docs { color: #555; background: #fafafa; border-color: #ddd; }
   .btn-docs:hover { background: #f0f0f0; border-color: #999; }
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
@@ -84,6 +87,7 @@ app.get('/dashboard', async (req, res) => {
             <div class="nav-bar">
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn btn-server">⚠️ Serverprobleme</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn btn-docs">📂 Dokumente</a>
             </div>
         `;
