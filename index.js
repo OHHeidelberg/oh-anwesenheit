@@ -35,13 +35,13 @@ const styles = `
   
   .border-active{border-color:#28a745}
   .border-home{border-color:#ffc107}
-  .border-meeting{border-color:#611f69}
+  .border-meeting{border-color:#d32f2f} /* Rot für Besprechung */
   .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.5}
 
   .status-badge{margin-top:8px;padding:6px;border-radius:15px;font-size:0.75rem;font-weight:700;display:flex;justify-content:center;align-items:center}
   .bg-active{background:#e6f4ea;color:#1e7e34}
   .bg-home{background:#fff9e6;color:#947600}
-  .bg-meeting{background:#f3e5f5;color:#611f69}
+  .bg-meeting{background:#ffebee;color:#d32f2f} /* Roter Hintergrund für Badge */
   .bg-away{background:#f5f5f7;color:#86868b}
   .info{margin-top:20px;font-size:0.7rem;color:#888}
   
@@ -108,7 +108,6 @@ app.get('/dashboard', async (req, res) => {
 
         const footerScript = `<script>const uS=document.getElementById('uS');const sU=localStorage.getItem('sU');if(sU){uS.value=sU}function save(){localStorage.setItem('sU',uS.value)}</script>`;
         
-        // Dropdown-Menü mit den neuen Punkten
         const footerForm = `
             <form action="/update" method="get" class="footer-bar" onsubmit="save()">
                 <select name="user" id="uS" required>
@@ -133,7 +132,6 @@ app.get('/dashboard', async (req, res) => {
 
 app.get('/update', async (req, res) => {
     const { status, user } = req.query;
-    // Map für die Slack-Status-Texte und Emojis
     const map = { 
         da: ["Im Büro", ":office:"], 
         homeoffice: ["Homeoffice", ":house_with_garden:"], 
