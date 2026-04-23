@@ -35,13 +35,13 @@ const styles = `
   
   .border-active{border-color:#28a745}
   .border-home{border-color:#ffc107}
-  .border-meeting{border-color:#d32f2f}
+  .border-red{border-color:#d32f2f} /* Rot für Besprechung & Unterwegs */
   .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.5}
 
   .status-badge{margin-top:8px;padding:6px;border-radius:15px;font-size:0.75rem;font-weight:700;display:flex;justify-content:center;align-items:center}
   .bg-active{background:#e6f4ea;color:#1e7e34}
   .bg-home{background:#fff9e6;color:#947600}
-  .bg-meeting{background:#ffebee;color:#d32f2f}
+  .bg-red{background:#ffebee;color:#d32f2f} /* Roter Badge-Hintergrund */
   .bg-away{background:#f5f5f7;color:#86868b}
   .info{margin-top:20px;font-size:0.7rem;color:#888}
   
@@ -66,9 +66,10 @@ async function getStatus(id) {
 
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
         
-        // Neue Prioritäten-Sortierung (r): 
+        // Prioritäten & Farben: 
         // 1=Büro, 2=Online (Grün)
-        // 3=Homeoffice, 4=Unterwegs (Gelb)
+        // 3=Homeoffice (Gelb)
+        // 4=Unterwegs (Rot)
         // 5=Besprechung (Rot)
         // 6=Abwesend (Grau)
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
@@ -81,10 +82,10 @@ async function getStatus(id) {
             res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; 
         }
         else if (lowTxt.includes("unterwegs") || lowTxt.includes("mobil")) { 
-            res.c="bg-home"; res.b="border-home"; res.r=4; res.e="🚗"; 
+            res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🚗"; 
         }
         else if (lowTxt.includes("besprechung") || lowTxt.includes("meeting") || lowTxt.includes("termin")) { 
-            res.c="bg-meeting"; res.b="border-meeting"; res.r=5; res.e="🗓️"; 
+            res.c="bg-red"; res.b="border-red"; res.r=5; res.e="🗓️"; 
         }
         return res;
     } catch (e) { return { t: "Fehler", e: "⚠️", c: "bg-away", b: "border-away", r: 9 }; }
