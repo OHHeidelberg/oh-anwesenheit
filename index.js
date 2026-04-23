@@ -1,11 +1,43 @@
 const express = require('express');
 const axios = require('axios');
 const { parse } = require('csv-parse/sync');
+const cron = require('node-cron'); // Erforderlich für die Automatisierung
 const app = express();
 const port = process.env.PORT || 10000;
 
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
+
+// --- VOLLAUTOMATISCHER RESET UM 00:00 UHR ---
+// Dieser Teil läuft im Hintergrund, solange die App aktiv ist.
+cron.schedule('0 0 * * *', async () => {
+    console.log("Mitternachts-Reset wird ausgeführt...");
+    try {
+        const csv = await axios.get(CSV_URL);
+        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        
+        for (const row of rows) {
+            const slackId = row[1].trim();
+            if (slackId) {
+                await axios.post('https://slack.com/api/users.profile.set', { 
+                    user: slackId,
+                    profile: { 
+                        status_text: "", 
+                        status_emoji: "" 
+                    } 
+                }, { 
+                    headers: { Authorization: `Bearer ${SLACK_TOKEN}` } 
+                });
+                console.log(`Status für ${row[0]} zurückgesetzt.`);
+            }
+        }
+        console.log("Automatischer Reset erfolgreich abgeschlossen.");
+    } catch (e) {
+        console.error("Fehler beim Mitternachts-Reset:", e.message);
+    }
+}, {
+    timezone: "Europe/Berlin"
+});
 
 const styles = `
 <style>
@@ -35,13 +67,13 @@ const styles = `
   
   .border-active{border-color:#28a745}
   .border-home{border-color:#ffc107}
-  .border-red{border-color:#d32f2f} /* Rot für Besprechung & Unterwegs */
+  .border-red{border-color:#d32f2f}
   .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.5}
 
   .status-badge{margin-top:8px;padding:6px;border-radius:15px;font-size:0.75rem;font-weight:700;display:flex;justify-content:center;align-items:center}
   .bg-active{background:#e6f4ea;color:#1e7e34}
   .bg-home{background:#fff9e6;color:#947600}
-  .bg-red{background:#ffebee;color:#d32f2f} /* Roter Badge-Hintergrund */
+  .bg-red{background:#ffebee;color:#d32f2f}
   .bg-away{background:#f5f5f7;color:#86868b}
   .info{margin-top:20px;font-size:0.7rem;color:#888}
   
@@ -66,12 +98,6 @@ async function getStatus(id) {
 
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
         
-        // Prioritäten & Farben: 
-        // 1=Büro, 2=Online (Grün)
-        // 3=Homeoffice (Gelb)
-        // 4=Unterwegs (Rot)
-        // 5=Besprechung (Rot)
-        // 6=Abwesend (Grau)
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
             res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; 
         }
