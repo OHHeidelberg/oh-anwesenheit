@@ -23,19 +23,21 @@ const styles = `
   
   .btn-krank { color: #d32f2f; background: #fff9f9; border-color: #ffcdd2; }
   .btn-krank:hover { background: #feebeb; border-color: #d32f2f; }
-  
   .btn-urlaub { color: #007aff; background: #f0f7ff; border-color: #c7e0ff; }
   .btn-urlaub:hover { background: #e0eeff; border-color: #007aff; }
-
   .btn-server { color: #ed6c02; background: #fffaf0; border-color: #ffe4cc; }
   .btn-server:hover { background: #fff2e6; border-color: #ed6c02; }
-
   .btn-docs { color: #555; background: #fafafa; border-color: #ddd; }
   .btn-docs:hover { background: #f0f0f0; border-color: #999; }
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
-  .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
+  
+  /* Foto-Link Styling */
+  .avatar-link { display: inline-block; transition: transform 0.2s; }
+  .avatar-link:hover { transform: scale(1.05); }
+  .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover;cursor:pointer}
+  
   .border-active{border-color:#28a745}
   .border-home{border-color:#ffc107}
   .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.5}
@@ -79,7 +81,17 @@ app.get('/dashboard', async (req, res) => {
         const data = await Promise.all(rows.map(async r => ({ n: r[0], id: r[1], ...(await getStatus(r[1])) })));
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
         data.sort((a, b) => a.r - b.r);
-        const cards = data.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/70'"><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+
+        // Foto ist jetzt klickbar und öffnet Slack DM
+        const cards = data.map(p => `
+            <div class="card">
+                <a href="slack://user?id=${p.id.trim()}" class="avatar-link">
+                    <img src="${p.p}" class="avatar ${p.b}" title="DM an ${p.n} schicken" onerror="this.src='https://via.placeholder.com/70'">
+                </a>
+                <div style="margin:8px 0;font-weight:bold">${p.n}</div>
+                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            </div>`).join('');
+
         const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
         
