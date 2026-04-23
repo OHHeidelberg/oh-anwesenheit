@@ -35,13 +35,13 @@ const styles = `
   
   .border-active{border-color:#28a745}
   .border-home{border-color:#ffc107}
-  .border-meeting{border-color:#d32f2f} /* Rot für Besprechung */
+  .border-meeting{border-color:#d32f2f}
   .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.5}
 
   .status-badge{margin-top:8px;padding:6px;border-radius:15px;font-size:0.75rem;font-weight:700;display:flex;justify-content:center;align-items:center}
   .bg-active{background:#e6f4ea;color:#1e7e34}
   .bg-home{background:#fff9e6;color:#947600}
-  .bg-meeting{background:#ffebee;color:#d32f2f} /* Roter Hintergrund für Badge */
+  .bg-meeting{background:#ffebee;color:#d32f2f}
   .bg-away{background:#f5f5f7;color:#86868b}
   .info{margin-top:20px;font-size:0.7rem;color:#888}
   
@@ -66,9 +66,10 @@ async function getStatus(id) {
 
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 5 };
         
+        // Prioritäten-Sortierung (r): 1=Büro, 2=Online, 3=Besprechung, 4=Home/Mobil, 5=Abwesend
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
-        else if (lowTxt.includes("besprechung") || lowTxt.includes("meeting") || lowTxt.includes("termin")) { res.c="bg-meeting"; res.b="border-meeting"; res.r=2; res.e="🗓️"; }
-        else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=3; res.e="🟢"; }
+        else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; }
+        else if (lowTxt.includes("besprechung") || lowTxt.includes("meeting") || lowTxt.includes("termin")) { res.c="bg-meeting"; res.b="border-meeting"; res.r=3; res.e="🗓️"; }
         else if (lowTxt.includes("home") || lowTxt.includes("unterwegs") || lowTxt.includes("mobil")) { 
             res.c="bg-home"; res.b="border-home"; res.r=4; 
             res.e = lowTxt.includes("home") ? "🏡" : "🚗";
