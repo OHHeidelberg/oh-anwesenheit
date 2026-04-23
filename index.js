@@ -9,9 +9,28 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf
 
 const styles = `
 <style>
-  body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:10px 10px 120px 10px}
+  body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:10px 10px 140px 10px}
   .container{width:98%;text-align:center}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:15px;width:100%;justify-content:center}
+  
+  .nav-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; flex-wrap: wrap; }
+  .nav-btn { 
+    text-decoration: none; background: #fff; color: #1d1d1f; padding: 10px 18px; 
+    border-radius: 20px; font-size: 0.9rem; font-weight: 700; border: 1px solid #ddd;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08); transition: all 0.2s ease;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .nav-btn:hover { background: #f5f5f7; border-color: #bbb; transform: translateY(-1px); }
+  
+  .btn-krank { color: #d32f2f; border-color: #ffc107; background: #fff9f9; border-color: #ffcdd2; }
+  .btn-krank:hover { background: #feebeb; border-color: #d32f2f; }
+  
+  .btn-urlaub { color: #007aff; border-color: #c7e0ff; background: #f0f7ff; }
+  .btn-urlaub:hover { background: #e0eeff; border-color: #007aff; }
+
+  .btn-docs { color: #555; border-color: #ddd; background: #fafafa; }
+  .btn-docs:hover { background: #f0f0f0; border-color: #999; }
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
   .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
   .border-active{border-color:#28a745}
@@ -22,10 +41,11 @@ const styles = `
   .bg-home{background:#fff9e6;color:#947600}
   .bg-away{background:#f5f5f7;color:#86868b}
   .info{margin-top:20px;font-size:0.7rem;color:#888}
+  
   .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; align-items: center; gap: 10px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000; }
   select, button { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
-  button { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 100px; }
-  @media (max-width: 600px) { .footer-bar { flex-direction: column; padding: 10px; } select, button { width: 90%; } }
+  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 100px; }
+  @media (max-width: 600px) { .footer-bar { flex-direction: column; padding: 10px; } select, .btn-update { width: 90%; } }
 </style>`;
 
 async function getStatus(id) {
@@ -42,7 +62,7 @@ async function getStatus(id) {
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 5 };
         if (txt.toLowerCase().includes("büro") || txt.toLowerCase().includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
         else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; }
-        else if (txt.toLowerCase().includes("home") || txt.toLowerCase().includes("unterwegs") || txt.toLowerCase().includes("auto")) { 
+        else if (txt.toLowerCase().includes("home") || txt.toLowerCase().includes("unterwegs")) { 
             res.c="bg-home"; res.b="border-home"; res.r=3; res.e = txt.toLowerCase().includes("home") ? "🏡" : "🚗";
         }
         return res;
@@ -59,9 +79,19 @@ app.get('/dashboard', async (req, res) => {
         const cards = data.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/70'"><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         const time = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+        
+        const navBar = `
+            <div class="nav-bar">
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
+                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn btn-docs">📂 Dokumente</a>
+            </div>
+        `;
+
         const footerScript = `<script>const uS=document.getElementById('uS');const sU=localStorage.getItem('sU');if(sU){uS.value=sU}function save(){localStorage.setItem('sU',uS.value)}</script>`;
-        const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="save()"><select name="user" id="uS" required><option value="" disabled selected>Mitarbeiter wählen</option>${userOptions}</select><select name="status" required><option value="da">🏢 Im Büro</option><option value="homeoffice">🏡 Homeoffice</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option><option value="weg">⚪ Abwesend</option></select><button type="submit">Update</button></form>`;
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Team Präsenz</h1><div class="grid">${cards}</div><div class="info">Aktualisierung: ${time} Uhr</div></div>${footerForm}${footerScript}</body></html>`);
+        const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="save()"><select name="user" id="uS" required><option value="" disabled selected>Mitarbeiter wählen</option>${userOptions}</select><select name="status" required><option value="da">🏢 Im Büro</option><option value="homeoffice">🏡 Homeoffice</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option><option value="weg">⚪ Abwesend</option></select><button type="submit" class="btn-update">Update</button></form>`;
+        
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Team Präsenz</h1>${navBar}<div class="grid">${cards}</div><div class="info">Aktualisierung: ${time} Uhr</div></div>${footerForm}${footerScript}</body></html>`);
     } catch (e) { res.status(500).send("Fehler beim Laden."); }
 });
 
@@ -80,7 +110,7 @@ app.get('/update', async (req, res) => {
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
         res.redirect('/dashboard');
-    } catch (e) { res.send("Fehler beim Update. Slack erlaubt evtl. keine Fremd-Updates."); }
+    } catch (e) { res.send("Fehler beim Update."); }
 });
 
 app.get('/', (req, res) => res.redirect('/dashboard'));
