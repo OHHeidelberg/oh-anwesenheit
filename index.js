@@ -149,7 +149,8 @@ app.get('/dashboard', async (req, res) => {
         const footerScript = `<script>const uS=document.getElementById('uS');const sU=localStorage.getItem('sU');if(sU){uS.value=sU}function save(){localStorage.setItem('sU',uS.value)}</script>`;
         const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="save()"><select name="user" id="uS" required><option value="" disabled selected>Mitarbeiter wählen</option>${userOptions}</select><select name="status" required><option value="da">🏢 Im Büro</option><option value="homeoffice">🏡 Homeoffice</option><option value="besprechung">🗓️ Besprechung</option><option value="unterwegs">🚗 Unterwegs</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option><option value="weg">⚪ Abwesend</option></select><button type="submit" class="btn-update">Update</button></form>`;
         
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Team Präsenz</h1>${navBar}<div class="grid">${cards}</div><div class="info">Aktualisierung: ${time} Uhr</div></div>${footerForm}${footerScript}</body></html>`);
+        // --- HIER WURDE DIE ÜBERSCHRIFT GEÄNDERT ---
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div><div class="info">Aktualisierung: ${time} Uhr</div></div>${footerForm}${footerScript}</body></html>`);
     } catch (e) { res.status(500).send("Fehler beim Laden."); }
 });
 
