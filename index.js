@@ -30,10 +30,6 @@ async function resetAllStatuses() {
     } catch (e) { return false; }
 }
 cron.schedule('0 0 * * *', () => resetAllStatuses(), { timezone: "Europe/Berlin" });
-app.get('/trigger-reset', async (req, res) => {
-    const success = await resetAllStatuses();
-    res.send(success ? "Reset abgeschlossen" : "Fehler");
-});
 
 // --- STYLES ---
 const styles = `
@@ -41,7 +37,13 @@ const styles = `
   body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:10px 10px 140px 10px}
   .container{width:98%;text-align:center}
   .nav-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; flex-wrap: wrap; }
-  .nav-btn { text-decoration: none; background: #fff; color: #1d1d1f; padding: 10px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 700; border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 6px; }
+  .nav-btn { text-decoration: none; background: #fff; color: #1d1d1f; padding: 10px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 700; border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+  .nav-btn:hover { background: #f5f5f7; transform: translateY(-1px); }
+  .btn-krank { color: #d32f2f; border-color: #ffcdd2; }
+  .btn-urlaub { color: #007aff; border-color: #c7e0ff; }
+  .btn-outlook { color: #0078d4; border-color: #0078d4; }
+  .btn-docs { color: #555; border-color: #ddd; }
+  .btn-server { color: #ed6c02; border-color: #ffe4cc; }
   .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
   .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
@@ -54,9 +56,9 @@ const styles = `
   .bg-red{background:#ffebee;color:#d32f2f}
   .bg-home{background:#fff9e6;color:#947600}
   .bg-away{background:#f5f5f7;color:#86868b}
-  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; gap: 10px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); }
+  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; gap: 10px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000; }
   select, button { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
-  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; }
+  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 100px; }
 </style>`;
 
 async function getFullStatus(id) {
@@ -103,10 +105,18 @@ app.get('/dashboard', async (req, res) => {
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
         data.sort((a, b) => a.r - b.r);
 
-        const cards = data.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}"><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        const cards = data.map(p => `<div class="card"><a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none"><img src="${p.p}" class="avatar ${p.b}"></a><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
         
-        // DAS SKRIPT ZUM SPEICHERN UND LADEN DES NAMENS
+        const navBar = `
+            <div class="nav-bar">
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
+                <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn btn-outlook">✉️ Outlook</a>
+                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn btn-docs">📂 Dokumente</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn btn-server">⚠️ Server</a>
+            </div>`;
+
         const footerScript = `
             <script>
                 const select = document.getElementById('userSelect');
@@ -133,7 +143,7 @@ app.get('/dashboard', async (req, res) => {
                 <button type="submit" class="btn-update">Update</button>
             </form>`;
 
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1><div class="grid">${cards}</div></div>${footerForm}${footerScript}</body></html>`);
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div></div>${footerForm}${footerScript}</body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
@@ -150,6 +160,11 @@ app.get('/empfang', async (req, res) => {
         const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body>${styles}<div class="container"><h1>Wer ist im Haus?</h1><div class="grid">${cards}</div></div></body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
+});
+
+app.get('/trigger-reset', async (req, res) => {
+    const success = await resetAllStatuses();
+    res.send(success ? "Reset abgeschlossen" : "Fehler");
 });
 
 app.get('/', (req, res) => res.redirect('/dashboard'));
