@@ -8,23 +8,26 @@ const port = process.env.PORT || 10000;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 
-// --- RESET LOGIK (bleibt gleich) ---
+// --- ZENTRALE RESET-LOGIK (Mit Ausnahme für Urlaub/Krank) ---
 async function resetAllStatuses() {
+    console.log("Mitternachts-Reset wird geprüft...");
     try {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         for (const row of rows) {
             const slackId = row[1].trim();
             if (!slackId) continue;
-            const profile = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId}`, {
-                headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
-            });
-            const currentText = (profile.data.profile.status_text || "").toLowerCase();
-            if (currentText.includes("urlaub") || currentText.includes("krank")) continue;
-            await axios.post('https://slack.com/api/users.profile.set', { 
-                user: slackId,
-                profile: { status_text: "", status_emoji: "" } 
-            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            try {
+                const profile = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId}`, {
+                    headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
+                });
+                const currentText = (profile.data.profile.status_text || "").toLowerCase();
+                if (currentText.includes("urlaub") || currentText.includes("krank")) continue;
+                await axios.post('https://slack.com/api/users.profile.set', { 
+                    user: slackId,
+                    profile: { status_text: "", status_emoji: "" } 
+                }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            } catch (e) { console.error("User-Reset Fehler:", e.message); }
         }
         return true;
     } catch (e) { return false; }
@@ -35,31 +38,33 @@ app.get('/trigger-reset', async (req, res) => {
     res.send(success ? "Reset abgeschlossen" : "Fehler");
 });
 
-// --- GEMEINSAME STYLES ---
+// --- STYLES ---
 const styles = `
 <style>
-  body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:20px}
+  body{font-family:sans-serif;background:#f0f2f5;display:flex;flex-direction:column;align-items:center;margin:0;padding:10px 10px 140px 10px}
   .container{width:98%;text-align:center}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:20px;width:100%;justify-content:center}
-  .card{background:#fff;padding:20px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:220px;margin:0 auto}
-  .avatar{width:90px;height:90px;border-radius:50%;border:5px solid #fff;object-fit:cover;margin-bottom:10px}
-  .border-active{border-color:#28a745}
-  .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.4}
-  .status-badge{padding:8px;border-radius:15px;font-size:0.8rem;font-weight:700;display:flex;justify-content:center;align-items:center}
-  .bg-active{background:#e6f4ea;color:#1e7e34}
-  .bg-away{background:#f5f5f7;color:#86868b}
-  .name{font-size:1.1rem;font-weight:bold;margin-bottom:10px}
-  
-  /* Nur für das Dashboard relevant */
   .nav-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; flex-wrap: wrap; }
   .nav-btn { text-decoration: none; background: #fff; color: #1d1d1f; padding: 10px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 700; border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 6px; }
   .btn-outlook { color: #0078d4; border-color: #0078d4; }
+  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
+  .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
+  .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
+  .border-active{border-color:#28a745}
+  .border-red{border-color:#d32f2f}
+  .border-home{border-color:#ffc107}
+  .border-away{border-color:#d1d1d6;filter:grayscale(1);opacity:0.5}
+  .status-badge{margin-top:8px;padding:6px;border-radius:15px;font-size:0.75rem;font-weight:700;display:flex;justify-content:center;align-items:center}
+  .bg-active{background:#e6f4ea;color:#1e7e34}
+  .bg-red{background:#ffebee;color:#d32f2f}
+  .bg-home{background:#fff9e6;color:#947600}
+  .bg-away{background:#f5f5f7;color:#86868b}
   .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; gap: 10px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); }
-  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; padding: 12px 20px; border-radius: 8px; }
+  select, button { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
+  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; }
 </style>`;
 
-// --- STATUS LOGIK ---
-async function getStatus(id) {
+// --- HILFSFUNKTION FÜR SLACK ---
+async function getFullStatus(id) {
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
         const [p, s] = await Promise.all([
@@ -67,49 +72,103 @@ async function getStatus(id) {
             axios.get(`https://slack.com/api/users.getPresence?user=${id.trim()}`, { headers: h, timeout: 4000 }).catch(() => ({data:{}}))
         ]);
         const prof = p.data.profile || {};
-        const txt = (prof.status_text || "").toLowerCase();
         const online = s.data.presence === 'active';
-        
-        // Prüfung auf "Im Büro" oder "Da"
-        const isPresent = txt.includes("büro") || txt.includes(" da") || txt === "da";
-        
-        if (isPresent) {
-            return { t: prof.status_text || "Im Haus", e: "🏢", c: "bg-active", b: "border-active", p: prof.image_192 };
-        } else {
-            return { t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away", p: prof.image_192 };
-        }
-    } catch (e) { return { t: "Unbekannt", e: "❓", c: "bg-away", b: "border-away", p: "" }; }
+        const txt = prof.status_text || "";
+        const lowTxt = txt.toLowerCase();
+
+        let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
+        if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
+        else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; }
+        else if (lowTxt.includes("home")) { res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; }
+        else if (lowTxt.includes("unterwegs") || lowTxt.includes("mobil")) { res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🚗"; }
+        else if (lowTxt.includes("besprechung") || lowTxt.includes("meeting") || lowTxt.includes("termin")) { res.c="bg-red"; res.b="border-red"; res.r=5; res.e="🗓️"; }
+        return res;
+    } catch (e) { return { t: "Fehler", e: "❓", c: "bg-away", b: "border-away", r: 9 }; }
 }
 
-// --- NEUE ROUTE: EMPFANGS-DISPLAY ---
+// --- ROUTE: UPDATE (Das hat gefehlt!) ---
+app.get('/update', async (req, res) => {
+    const { status, user } = req.query;
+    const map = { 
+        da: ["Im Büro", ":office:"], 
+        homeoffice: ["Homeoffice", ":house_with_garden:"], 
+        besprechung: ["Besprechung", ":calendar:"],
+        unterwegs: ["Unterwegs", ":car:"],
+        krank: ["Krank", ":face_with_thermometer:"], 
+        urlaub: ["Urlaub", ":palm_tree:"], 
+        weg: ["Abwesend", ":wave:"] 
+    };
+    const val = map[status] || ["Abwesend", ":wave:"];
+    try {
+        const csv = await axios.get(CSV_URL);
+        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        const person = rows.find(r => r[0] === user);
+        if (person) {
+            await axios.post('https://slack.com/api/users.profile.set', { 
+                user: person[1].trim(),
+                profile: { status_text: val[0], status_emoji: val[1] } 
+            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+        }
+        res.redirect('/dashboard');
+    } catch (e) { res.send("Fehler beim Update."); }
+});
+
+// --- ROUTE: EMPFANG (Nur wer im Haus ist) ---
 app.get('/empfang', async (req, res) => {
     try {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
-        const data = await Promise.all(rows.map(async r => ({ n: r[0], ...(await getStatus(r[1])) })));
+        const data = await Promise.all(rows.map(async r => ({ n: r[0], ...(await getFullStatus(r[1])) })));
         
-        // Sortierung: Wer da ist, kommt nach oben
-        data.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
+        // Empfangs-Logik: Nur Büro-Statusse sind "da"
+        const finalData = data.map(p => {
+            const isPresent = p.t.toLowerCase().includes("büro") || p.t.toLowerCase().includes("da");
+            return isPresent ? p : { ...p, t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away" };
+        });
 
-        const cards = data.map(p => `
+        finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
+
+        const cards = finalData.map(p => `
             <div class="card">
-                <img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/90'">
-                <div class="name">${p.n}</div>
+                <img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'">
+                <div style="margin:8px 0;font-weight:bold">${p.n}</div>
                 <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
             </div>`).join('');
 
-        res.send(`<html><head><meta http-equiv="refresh" content="60"><title>Empfang</title></head>${styles}<body><div class="container"><h1>Wer ist im Haus?</h1><div class="grid">${cards}</div></div></body></html>`);
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body style="padding-bottom:20px">${styles}<div class="container"><h1>Wer ist im Haus?</h1><div class="grid">${cards}</div></div></body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
-// --- DASHBOARD ROUTE (unverändert mit Buttons/Footer) ---
-// ... (Hier folgt der Code für /dashboard wie bisher, falls du beide brauchst)
-// Der Übersicht halber hier abgekürzt, du kannst die Dashboard-Logik von oben einfach beibehalten.
-
+// --- ROUTE: DASHBOARD (Mitarbeiteransicht) ---
 app.get('/dashboard', async (req, res) => {
-    // Hier den ursprünglichen Dashboard-Code einfügen (mit Nav-Bar und Footer)
-    // Damit hättest du zwei Ansichten: Eine für Mitarbeiter (/dashboard) und eine für den Eingang (/empfang)
+    try {
+        const csv = await axios.get(CSV_URL);
+        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        const data = await Promise.all(rows.map(async r => ({ n: r[0], id: r[1], ...(await getFullStatus(r[1])) })));
+        const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
+        data.sort((a, b) => a.r - b.r);
+
+        const cards = data.map(p => `
+            <div class="card">
+                <a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none">
+                    <img src="${p.p}" class="avatar ${p.b}">
+                </a>
+                <div style="margin:8px 0;font-weight:bold">${p.n}</div>
+                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            </div>`).join('');
+
+        const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+        const navBar = `
+            <div class="nav-bar">
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
+                <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn btn-outlook">✉️ Outlook</a>
+            </div>`;
+        const footerForm = `<form action="/update" method="get" class="footer-bar"><select name="user" required><option value="" disabled selected>Mitarbeiter wählen</option>${userOptions}</select><select name="status" required><option value="da">🏢 Im Büro</option><option value="homeoffice">🏡 Homeoffice</option><option value="besprechung">🗓️ Besprechung</option><option value="unterwegs">🚗 Unterwegs</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option><option value="weg">⚪ Abwesend</option></select><button type="submit" class="btn-update">Update</button></form>`;
+
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div></div>${footerForm}</body></html>`);
+    } catch (e) { res.status(500).send("Fehler."); }
 });
 
-app.get('/', (req, res) => res.redirect('/empfang'));
+app.get('/', (req, res) => res.redirect('/dashboard'));
 app.listen(port, '0.0.0.0', () => console.log("Online"));
