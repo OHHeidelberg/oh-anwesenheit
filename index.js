@@ -8,26 +8,23 @@ const port = process.env.PORT || 10000;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 
-// --- ZENTRALE RESET-LOGIK (Mit Ausnahme für Urlaub/Krank) ---
+// --- RESET LOGIK ---
 async function resetAllStatuses() {
-    console.log("Mitternachts-Reset wird geprüft...");
     try {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         for (const row of rows) {
             const slackId = row[1].trim();
             if (!slackId) continue;
-            try {
-                const profile = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId}`, {
-                    headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
-                });
-                const currentText = (profile.data.profile.status_text || "").toLowerCase();
-                if (currentText.includes("urlaub") || currentText.includes("krank")) continue;
-                await axios.post('https://slack.com/api/users.profile.set', { 
-                    user: slackId,
-                    profile: { status_text: "", status_emoji: "" } 
-                }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
-            } catch (e) { console.error("User-Reset Fehler:", e.message); }
+            const profile = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId}`, {
+                headers: { Authorization: `Bearer ${SLACK_TOKEN}` }
+            });
+            const currentText = (profile.data.profile.status_text || "").toLowerCase();
+            if (currentText.includes("urlaub") || currentText.includes("krank")) continue;
+            await axios.post('https://slack.com/api/users.profile.set', { 
+                user: slackId,
+                profile: { status_text: "", status_emoji: "" } 
+            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
         return true;
     } catch (e) { return false; }
@@ -45,7 +42,6 @@ const styles = `
   .container{width:98%;text-align:center}
   .nav-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 25px; flex-wrap: wrap; }
   .nav-btn { text-decoration: none; background: #fff; color: #1d1d1f; padding: 10px 18px; border-radius: 20px; font-size: 0.9rem; font-weight: 700; border: 1px solid #ddd; box-shadow: 0 2px 6px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 6px; }
-  .btn-outlook { color: #0078d4; border-color: #0078d4; }
   .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
   .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
@@ -63,7 +59,6 @@ const styles = `
   .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; }
 </style>`;
 
-// --- HILFSFUNKTION FÜR SLACK ---
 async function getFullStatus(id) {
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
@@ -75,7 +70,6 @@ async function getFullStatus(id) {
         const online = s.data.presence === 'active';
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
-
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
         else if (online && !txt) { res.c="bg-active"; res.b="border-active"; res.r=2; res.e="🟢"; }
@@ -86,60 +80,21 @@ async function getFullStatus(id) {
     } catch (e) { return { t: "Fehler", e: "❓", c: "bg-away", b: "border-away", r: 9 }; }
 }
 
-// --- ROUTE: UPDATE (Das hat gefehlt!) ---
 app.get('/update', async (req, res) => {
     const { status, user } = req.query;
-    const map = { 
-        da: ["Im Büro", ":office:"], 
-        homeoffice: ["Homeoffice", ":house_with_garden:"], 
-        besprechung: ["Besprechung", ":calendar:"],
-        unterwegs: ["Unterwegs", ":car:"],
-        krank: ["Krank", ":face_with_thermometer:"], 
-        urlaub: ["Urlaub", ":palm_tree:"], 
-        weg: ["Abwesend", ":wave:"] 
-    };
+    const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
     const val = map[status] || ["Abwesend", ":wave:"];
     try {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         const person = rows.find(r => r[0] === user);
         if (person) {
-            await axios.post('https://slack.com/api/users.profile.set', { 
-                user: person[1].trim(),
-                profile: { status_text: val[0], status_emoji: val[1] } 
-            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            await axios.post('https://slack.com/api/users.profile.set', { user: person[1].trim(), profile: { status_text: val[0], status_emoji: val[1] } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
         res.redirect('/dashboard');
-    } catch (e) { res.send("Fehler beim Update."); }
+    } catch (e) { res.send("Fehler."); }
 });
 
-// --- ROUTE: EMPFANG (Nur wer im Haus ist) ---
-app.get('/empfang', async (req, res) => {
-    try {
-        const csv = await axios.get(CSV_URL);
-        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
-        const data = await Promise.all(rows.map(async r => ({ n: r[0], ...(await getFullStatus(r[1])) })));
-        
-        // Empfangs-Logik: Nur Büro-Statusse sind "da"
-        const finalData = data.map(p => {
-            const isPresent = p.t.toLowerCase().includes("büro") || p.t.toLowerCase().includes("da");
-            return isPresent ? p : { ...p, t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away" };
-        });
-
-        finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
-
-        const cards = finalData.map(p => `
-            <div class="card">
-                <img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'">
-                <div style="margin:8px 0;font-weight:bold">${p.n}</div>
-                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-            </div>`).join('');
-
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body style="padding-bottom:20px">${styles}<div class="container"><h1>Wer ist im Haus?</h1><div class="grid">${cards}</div></div></body></html>`);
-    } catch (e) { res.status(500).send("Fehler."); }
-});
-
-// --- ROUTE: DASHBOARD (Mitarbeiteransicht) ---
 app.get('/dashboard', async (req, res) => {
     try {
         const csv = await axios.get(CSV_URL);
@@ -148,25 +103,52 @@ app.get('/dashboard', async (req, res) => {
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
         data.sort((a, b) => a.r - b.r);
 
-        const cards = data.map(p => `
-            <div class="card">
-                <a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none">
-                    <img src="${p.p}" class="avatar ${p.b}">
-                </a>
-                <div style="margin:8px 0;font-weight:bold">${p.n}</div>
-                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-            </div>`).join('');
-
+        const cards = data.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}"><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
-        const navBar = `
-            <div class="nav-bar">
-                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
-                <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn btn-outlook">✉️ Outlook</a>
-            </div>`;
-        const footerForm = `<form action="/update" method="get" class="footer-bar"><select name="user" required><option value="" disabled selected>Mitarbeiter wählen</option>${userOptions}</select><select name="status" required><option value="da">🏢 Im Büro</option><option value="homeoffice">🏡 Homeoffice</option><option value="besprechung">🗓️ Besprechung</option><option value="unterwegs">🚗 Unterwegs</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option><option value="weg">⚪ Abwesend</option></select><button type="submit" class="btn-update">Update</button></form>`;
+        
+        // DAS SKRIPT ZUM SPEICHERN UND LADEN DES NAMENS
+        const footerScript = `
+            <script>
+                const select = document.getElementById('userSelect');
+                const savedUser = localStorage.getItem('lastUser');
+                if (savedUser) { select.value = savedUser; }
+                function saveUser() { localStorage.setItem('lastUser', select.value); }
+            </script>`;
 
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div></div>${footerForm}</body></html>`);
+        const footerForm = `
+            <form action="/update" method="get" class="footer-bar" onsubmit="saveUser()">
+                <select name="user" id="userSelect" required>
+                    <option value="" disabled selected>Mitarbeiter wählen</option>
+                    ${userOptions}
+                </select>
+                <select name="status" required>
+                    <option value="da">🏢 Im Büro</option>
+                    <option value="homeoffice">🏡 Homeoffice</option>
+                    <option value="besprechung">🗓️ Besprechung</option>
+                    <option value="unterwegs">🚗 Unterwegs</option>
+                    <option value="krank">🤒 Krank</option>
+                    <option value="urlaub">🌴 Urlaub</option>
+                    <option value="weg">⚪ Abwesend</option>
+                </select>
+                <button type="submit" class="btn-update">Update</button>
+            </form>`;
+
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1><div class="grid">${cards}</div></div>${footerForm}${footerScript}</body></html>`);
+    } catch (e) { res.status(500).send("Fehler."); }
+});
+
+app.get('/empfang', async (req, res) => {
+    try {
+        const csv = await axios.get(CSV_URL);
+        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        const data = await Promise.all(rows.map(async r => ({ n: r[0], ...(await getFullStatus(r[1])) })));
+        const finalData = data.map(p => {
+            const isPresent = p.t.toLowerCase().includes("büro") || p.t.toLowerCase().includes("da");
+            return isPresent ? p : { ...p, t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away" };
+        });
+        finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
+        const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body>${styles}<div class="container"><h1>Wer ist im Haus?</h1><div class="grid">${cards}</div></div></body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
