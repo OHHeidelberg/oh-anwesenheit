@@ -42,6 +42,8 @@ const styles = `
   .btn-krank { color: #d32f2f; border-color: #ffcdd2; }
   .btn-urlaub { color: #007aff; border-color: #c7e0ff; }
   .btn-outlook { color: #0078d4; border-color: #0078d4; }
+  .btn-docs { color: #555; border-color: #ddd; }
+  .btn-server { color: #ed6c02; border-color: #ffe4cc; }
   .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
   .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
@@ -81,49 +83,26 @@ async function getFullStatus(id) {
     } catch (e) { return { t: "Fehler", e: "❓", c: "bg-away", b: "border-away", r: 9 }; }
 }
 
-// --- UPDATE ROUTE MIT ZEITZONEN-KORREKTUR ---
+// --- UPDATE ROUTE ---
 app.get('/update', async (req, res) => {
     const { status, user, bis } = req.query;
-    const map = { 
-        da: ["Im Büro", ":office:"], 
-        homeoffice: ["Homeoffice", ":house_with_garden:"], 
-        besprechung: ["Besprechung", ":calendar:"], 
-        unterwegs: ["Unterwegs", ":car:"], 
-        krank: ["Krank", ":face_with_thermometer:"], 
-        urlaub: ["Urlaub", ":palm_tree:"], 
-        weg: ["Abwesend", ":wave:"] 
-    };
+    const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
     
     let [text, emoji] = map[status] || ["Abwesend", ":wave:"];
     let expiration = 0;
 
     if (bis && bis.trim() !== "") {
-        // Wir erstellen ein Datumsobjekt im Kontext von Europa/Berlin
-        const now = new Date();
         const [hours, minutes] = bis.split(':');
+        // Erzeuge Datum in der lokalen Zeit des Systems (Deutschland auf dem Render-Server via TZ steuerbar oder manuell)
+        const expireDate = new Date();
+        expireDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         
-        // Zeit im String-Format für Berlin bauen
-        const dateString = now.toISOString().split('T')[0] + `T${hours}:${minutes}:00`;
-        const localDate = new Date(dateString);
-
-        // Da Render in UTC läuft, müssen wir die Zeit als "Europe/Berlin" interpretieren
-        // Wir nutzen eine einfache Methode: Wir ziehen die Zeitverschiebung manuell oder über Intl ab.
-        // Am sichersten für Node.js ohne extra Pakete:
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Europe/Berlin',
-            hour12: false,
-            year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric'
-        });
+        // Falls die gewählte Zeit heute schon vorbei ist, nimm morgen
+        if (expireDate < new Date()) {
+            expireDate.setDate(expireDate.getDate() + 1);
+        }
         
-        // Wir berechnen den Versatz (Offset) zwischen UTC und Berlin
-        const parts = formatter.formatToParts(now);
-        const hourPart = parts.find(p => p.type === 'hour').value;
-        const diff = parseInt(hourPart) - now.getUTCHours();
-        
-        // Korrektur: Wir ziehen den Unterschied von der gewählten Zeit ab
-        localDate.setHours(localDate.getHours() - diff);
-        
-        expiration = Math.floor(localDate.getTime() / 1000);
+        expiration = Math.floor(expireDate.getTime() / 1000);
         text += ` bis ${bis}`;
     }
 
@@ -134,17 +113,14 @@ app.get('/update', async (req, res) => {
         if (person) {
             await axios.post('https://slack.com/api/users.profile.set', { 
                 user: person[1].trim(), 
-                profile: { 
-                    status_text: text, 
-                    status_emoji: emoji,
-                    status_expiration: expiration 
-                } 
+                profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } 
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
         res.redirect('/dashboard');
-    } catch (e) { res.send("Fehler beim Update."); }
+    } catch (e) { res.send("Fehler."); }
 });
 
+// --- DASHBOARD ---
 app.get('/dashboard', async (req, res) => {
     try {
         const csv = await axios.get(CSV_URL);
@@ -161,6 +137,8 @@ app.get('/dashboard', async (req, res) => {
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
                 <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn btn-outlook">✉️ Outlook</a>
+                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn btn-docs">📂 Dokumente</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn btn-server">⚠️ Server</a>
             </div>`;
 
         const footerScript = `
