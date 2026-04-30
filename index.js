@@ -56,9 +56,8 @@ const styles = `
   .bg-away{background:#f5f5f7;color:#86868b}
   .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; gap: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000; flex-wrap: wrap; }
   select, button, input { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
-  input[type="time"] { width: 100px; }
+  input[type="time"] { width: 110px; }
   .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 80px; }
-  @media (max-width: 600px) { .footer-bar { padding: 10px; gap: 5px; } select, input, .btn-update { font-size: 0.9rem; } }
 </style>`;
 
 async function getFullStatus(id) {
@@ -82,14 +81,25 @@ async function getFullStatus(id) {
     } catch (e) { return { t: "Fehler", e: "❓", c: "bg-away", b: "border-away", r: 9 }; }
 }
 
+// --- UPDATE ROUTE MIT AUTOMATISCHER ENDZEIT ---
 app.get('/update', async (req, res) => {
     const { status, user, bis } = req.query;
     const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
     
     let [text, emoji] = map[status] || ["Abwesend", ":wave:"];
-    
-    // Zeit anhängen, falls vorhanden
+    let expiration = 0; // 0 bedeutet kein automatisches Ablaufdatum
+
     if (bis && bis.trim() !== "") {
+        const now = new Date();
+        const [hours, minutes] = bis.split(':');
+        const expireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+        
+        // Wenn die Zeit bereits vergangen ist (z.B. nach Mitternacht), für den nächsten Tag planen
+        if (expireDate < now) {
+            expireDate.setDate(expireDate.getDate() + 1);
+        }
+        
+        expiration = Math.floor(expireDate.getTime() / 1000);
         text += ` bis ${bis}`;
     }
 
@@ -100,11 +110,15 @@ app.get('/update', async (req, res) => {
         if (person) {
             await axios.post('https://slack.com/api/users.profile.set', { 
                 user: person[1].trim(), 
-                profile: { status_text: text, status_emoji: emoji } 
+                profile: { 
+                    status_text: text, 
+                    status_emoji: emoji,
+                    status_expiration: expiration 
+                } 
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
         res.redirect('/dashboard');
-    } catch (e) { res.send("Fehler."); }
+    } catch (e) { res.send("Fehler beim Update."); }
 });
 
 app.get('/dashboard', async (req, res) => {
@@ -148,8 +162,10 @@ app.get('/dashboard', async (req, res) => {
                     <option value="urlaub">🌴 Urlaub</option>
                     <option value="weg">⚪ Abwesend</option>
                 </select>
-                <span style="align-self:center; font-size:0.8rem; color:#666;">bis:</span>
-                <input type="time" name="bis">
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                    <span style="font-size:0.7rem; color:#666;">Ablaufzeit</span>
+                    <input type="time" name="bis">
+                </div>
                 <button type="submit" class="btn-update">Update</button>
             </form>`;
 
