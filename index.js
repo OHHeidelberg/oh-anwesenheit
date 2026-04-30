@@ -42,8 +42,6 @@ const styles = `
   .btn-krank { color: #d32f2f; border-color: #ffcdd2; }
   .btn-urlaub { color: #007aff; border-color: #c7e0ff; }
   .btn-outlook { color: #0078d4; border-color: #0078d4; }
-  .btn-docs { color: #555; border-color: #ddd; }
-  .btn-server { color: #ed6c02; border-color: #ffe4cc; }
   .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;width:100%;justify-content:center}
   .card{background:#fff;padding:15px;border-radius:18px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05);max-width:200px;margin:0 auto}
   .avatar{width:75px;height:75px;border-radius:50%;border:4px solid #fff;object-fit:cover}
@@ -56,9 +54,11 @@ const styles = `
   .bg-red{background:#ffebee;color:#d32f2f}
   .bg-home{background:#fff9e6;color:#947600}
   .bg-away{background:#f5f5f7;color:#86868b}
-  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; gap: 10px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000; }
-  select, button { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
-  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 100px; }
+  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #ddd; padding: 20px; display: flex; justify-content: center; gap: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); z-index: 1000; flex-wrap: wrap; }
+  select, button, input { padding: 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; }
+  input[type="time"] { width: 100px; }
+  .btn-update { background: #007aff; color: #fff; border: none; cursor: pointer; font-weight: bold; min-width: 80px; }
+  @media (max-width: 600px) { .footer-bar { padding: 10px; gap: 5px; } select, input, .btn-update { font-size: 0.9rem; } }
 </style>`;
 
 async function getFullStatus(id) {
@@ -83,15 +83,25 @@ async function getFullStatus(id) {
 }
 
 app.get('/update', async (req, res) => {
-    const { status, user } = req.query;
+    const { status, user, bis } = req.query;
     const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
-    const val = map[status] || ["Abwesend", ":wave:"];
+    
+    let [text, emoji] = map[status] || ["Abwesend", ":wave:"];
+    
+    // Zeit anhängen, falls vorhanden
+    if (bis && bis.trim() !== "") {
+        text += ` bis ${bis}`;
+    }
+
     try {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         const person = rows.find(r => r[0] === user);
         if (person) {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person[1].trim(), profile: { status_text: val[0], status_emoji: val[1] } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            await axios.post('https://slack.com/api/users.profile.set', { 
+                user: person[1].trim(), 
+                profile: { status_text: text, status_emoji: emoji } 
+            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
         }
         res.redirect('/dashboard');
     } catch (e) { res.send("Fehler."); }
@@ -113,8 +123,6 @@ app.get('/dashboard', async (req, res) => {
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn btn-urlaub">🌴 Urlaubsantrag</a>
                 <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn btn-outlook">✉️ Outlook</a>
-                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn btn-docs">📂 Dokumente</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn btn-server">⚠️ Server</a>
             </div>`;
 
         const footerScript = `
@@ -128,7 +136,7 @@ app.get('/dashboard', async (req, res) => {
         const footerForm = `
             <form action="/update" method="get" class="footer-bar" onsubmit="saveUser()">
                 <select name="user" id="userSelect" required>
-                    <option value="" disabled selected>Mitarbeiter wählen</option>
+                    <option value="" disabled selected>Mitarbeiter</option>
                     ${userOptions}
                 </select>
                 <select name="status" required>
@@ -140,6 +148,8 @@ app.get('/dashboard', async (req, res) => {
                     <option value="urlaub">🌴 Urlaub</option>
                     <option value="weg">⚪ Abwesend</option>
                 </select>
+                <span style="align-self:center; font-size:0.8rem; color:#666;">bis:</span>
+                <input type="time" name="bis">
                 <button type="submit" class="btn-update">Update</button>
             </form>`;
 
