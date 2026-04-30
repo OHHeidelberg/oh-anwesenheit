@@ -81,25 +81,49 @@ async function getFullStatus(id) {
     } catch (e) { return { t: "Fehler", e: "❓", c: "bg-away", b: "border-away", r: 9 }; }
 }
 
-// --- UPDATE ROUTE MIT AUTOMATISCHER ENDZEIT ---
+// --- UPDATE ROUTE MIT ZEITZONEN-KORREKTUR ---
 app.get('/update', async (req, res) => {
     const { status, user, bis } = req.query;
-    const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
+    const map = { 
+        da: ["Im Büro", ":office:"], 
+        homeoffice: ["Homeoffice", ":house_with_garden:"], 
+        besprechung: ["Besprechung", ":calendar:"], 
+        unterwegs: ["Unterwegs", ":car:"], 
+        krank: ["Krank", ":face_with_thermometer:"], 
+        urlaub: ["Urlaub", ":palm_tree:"], 
+        weg: ["Abwesend", ":wave:"] 
+    };
     
     let [text, emoji] = map[status] || ["Abwesend", ":wave:"];
-    let expiration = 0; // 0 bedeutet kein automatisches Ablaufdatum
+    let expiration = 0;
 
     if (bis && bis.trim() !== "") {
+        // Wir erstellen ein Datumsobjekt im Kontext von Europa/Berlin
         const now = new Date();
         const [hours, minutes] = bis.split(':');
-        const expireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
         
-        // Wenn die Zeit bereits vergangen ist (z.B. nach Mitternacht), für den nächsten Tag planen
-        if (expireDate < now) {
-            expireDate.setDate(expireDate.getDate() + 1);
-        }
+        // Zeit im String-Format für Berlin bauen
+        const dateString = now.toISOString().split('T')[0] + `T${hours}:${minutes}:00`;
+        const localDate = new Date(dateString);
+
+        // Da Render in UTC läuft, müssen wir die Zeit als "Europe/Berlin" interpretieren
+        // Wir nutzen eine einfache Methode: Wir ziehen die Zeitverschiebung manuell oder über Intl ab.
+        // Am sichersten für Node.js ohne extra Pakete:
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Europe/Berlin',
+            hour12: false,
+            year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric'
+        });
         
-        expiration = Math.floor(expireDate.getTime() / 1000);
+        // Wir berechnen den Versatz (Offset) zwischen UTC und Berlin
+        const parts = formatter.formatToParts(now);
+        const hourPart = parts.find(p => p.type === 'hour').value;
+        const diff = parseInt(hourPart) - now.getUTCHours();
+        
+        // Korrektur: Wir ziehen den Unterschied von der gewählten Zeit ab
+        localDate.setHours(localDate.getHours() - diff);
+        
+        expiration = Math.floor(localDate.getTime() / 1000);
         text += ` bis ${bis}`;
     }
 
