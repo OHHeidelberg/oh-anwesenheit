@@ -24,7 +24,7 @@ const htmlHead = `
 const styles = `
 <style>
   :root { --bg-color: #000; --card-bg: #2c2c2e; --text-color: #fff; --accent-blue: #007aff; }
-  body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; display: flex; flex-direction: column; align-items: center; }
+  body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
   .container { width: 95%; padding: 20px 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; width: 100%; }
   .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; transition: opacity 0.3s; }
@@ -47,7 +47,7 @@ const styles = `
   .info-banner { width: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; padding: 20px; border-radius: 18px; margin-bottom: 25px; font-size: 1.6rem; font-weight: bold; text-align: center; }
   .nav-bar { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; justify-content: center; }
   .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; }
-  .footer-bar { position: fixed; bottom: 0; width: 100%; background: #1c1c1e; padding: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; border-top: 1px solid #333; z-index: 1000; flex-wrap: wrap; }
+  .footer-bar { position: fixed; bottom: 0; width: 100%; background: #1c1c1e; padding: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; border-top: 1px solid #333; z-index: 1000; flex-wrap: wrap; box-sizing: border-box; }
   select, button, input { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 10px; font-size: 1rem; }
   .btn-update { background: var(--accent-blue); border: none; font-weight: bold; cursor: pointer; }
 </style>`;
@@ -66,7 +66,7 @@ function renderAvatar(person) {
 
 async function getFullStatus(id, name) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") {
-        return { t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away", p: null, r: 9 };
+        return { t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away", p: null, r: 8 };
     }
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
@@ -78,15 +78,22 @@ async function getFullStatus(id, name) {
         const online = s.data.presence === 'active';
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
-        let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
         
-        if (lowTxt.includes("büro") || lowTxt.includes("da") || (online && !txt)) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
+        // Standard-Status (Online/Abwesend)
+        let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 8 };
+        if (online && !txt) res.r = 2; // Rang 2: Nur Online
+
+        // Spezifische Status-Regeln & Ranking
+        if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; }
-        else if (lowTxt.includes("unterwegs") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🗓️"; }
+        else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🗓️"; }
+        else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.b="border-red"; res.r=5; res.e="🚗"; }
+        else if (lowTxt.includes("krank")) { res.c="bg-red"; res.b="border-red"; res.r=6; res.e="🤒"; }
+        else if (lowTxt.includes("urlaub")) { res.c="bg-red"; res.b="border-red"; res.r=7; res.e="🌴"; }
         
         return res;
     } catch (e) { 
-        return { t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away", p: null, r: 9 };
+        return { t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away", p: null, r: 8 };
     }
 }
 
@@ -101,7 +108,7 @@ async function updateData() {
         if (newData.length > 0) cachedData = newData;
         const infoCsv = await axios.get(INFO_URL, { timeout: 5000 }).catch(() => null);
         if (infoCsv) cachedInfoText = infoCsv.data.split('\n')[0];
-    } catch (e) { console.log("Update failed"); }
+    } catch (e) { console.log("Cache update failed"); }
 }
 
 setInterval(updateData, 120000);
@@ -109,11 +116,14 @@ updateData();
 
 app.get('/empfang', (req, res) => {
     const data = [...cachedData];
-    data.sort((a, b) => (a.r > 2) - (b.r > 2) || a.n.localeCompare(b.n));
+    // Sortierung: Im Büro (r=1) zuerst, dann der Rest alphabetisch
+    data.sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
+    
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
     const cards = data.map(p => {
-        const isAway = p.r > 2;
-        return `<div class="card" style="${isAway ? 'opacity:0.4' : ''}">
+        // NUR Status "Im Büro" (Rang 1) wird voll angezeigt. "Online" (Rang 2) gilt als abwesend.
+        const isNotAtDesk = p.r !== 1; 
+        return `<div class="card" style="${isNotAtDesk ? 'opacity:0.35' : ''}">
             <div class="avatar-container">${renderAvatar(p)}</div>
             <span class="name-label">${p.n}</span>
             <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
@@ -123,7 +133,7 @@ app.get('/empfang', (req, res) => {
 });
 
 app.get('/dashboard', (req, res) => {
-    const data = [...cachedData].sort((a, b) => a.r - b.r);
+    const data = [...cachedData].sort((a, b) => a.r - b.r || a.n.localeCompare(b.n));
     const cards = data.map(p => `<div class="card"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     
@@ -143,7 +153,9 @@ app.get('/dashboard', (req, res) => {
             <option value="da">🏢 Büro</option>
             <option value="homeoffice">🏡 Home</option>
             <option value="besprechung">🗓️ Termin</option>
-            <option value="unterwegs">🚗 Weg</option>
+            <option value="unterwegs">🚗 Unterwegs</option>
+            <option value="krank">🤒 Krank</option>
+            <option value="urlaub">🌴 Urlaub</option>
             <option value="weg">🌊 Abwesend</option>
         </select>
         <input type="time" name="bis">
@@ -157,7 +169,15 @@ app.get('/update', async (req, res) => {
     const { user, status, bis } = req.query;
     const person = cachedData.find(r => r.n === user);
     if (person && person.id && person.id !== "kein") {
-        const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], weg: ["Abwesend", ":wave:"] };
+        const map = { 
+            da: ["Im Büro", ":office:"], 
+            homeoffice: ["Homeoffice", ":house_with_garden:"], 
+            besprechung: ["Besprechung", ":calendar:"], 
+            unterwegs: ["Unterwegs", ":car:"], 
+            krank: ["Krank", ":face_with_thermometer:"],
+            urlaub: ["Urlaub", ":palm_tree:"],
+            weg: ["Abwesend", ":wave:"] 
+        };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let exp = 0;
         if (bis) {
