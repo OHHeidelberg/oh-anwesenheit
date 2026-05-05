@@ -68,6 +68,7 @@ const styles = `
     .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .card { padding: 12px !important; }
     .avatar { width: 65px !important; height: 65px !important; }
+    .name-label { font-size: 0.9rem !important; }
     h1 { font-size: 1.5rem !important; }
     .nav-bar { gap: 8px !important; }
     .nav-btn { font-size: 0.75rem !important; padding: 8px 10px !important; }
@@ -78,15 +79,35 @@ const styles = `
   .card { 
     background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; 
     box-shadow: 0 8px 20px rgba(0,0,0,0.6); border: 1px solid #3d3d40; 
+    display: flex; flex-direction: column; align-items: center;
   }
   
-  .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; margin-bottom: 8px; }
+  .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; margin-bottom: 10px; }
   .border-active { border-color: #32d74b; }
   .border-red { border-color: #ff453a; }
   .border-home { border-color: #ffd60a; }
   .border-away { border-color: #48484a; filter: grayscale(1); opacity: 0.5; }
 
-  .status-badge { margin-top: 8px; padding: 6px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: flex; justify-content: center; align-items: center; }
+  .name-label { 
+    font-weight: bold; 
+    font-size: 1.1rem; 
+    margin-bottom: 5px; 
+    display: block; /* Erzwingt neue Zeile */
+    min-height: 1.2em;
+  }
+
+  .status-badge { 
+    padding: 6px 10px; 
+    border-radius: 12px; 
+    font-size: 0.85rem; 
+    font-weight: 700; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    width: 90%;
+    margin-top: auto; /* Schiebt Status nach unten, falls Namen unterschiedlich lang */
+  }
+
   .bg-active { background: #1c3d22; color: #32d74b; border: 1px solid #245a2e; }
   .bg-red { background: #3d1c1c; color: #ff453a; border: 1px solid #632323; }
   .bg-home { background: #3d361c; color: #ffd60a; border: 1px solid #5a4b14; }
@@ -175,10 +196,16 @@ app.get('/dashboard', async (req, res) => {
         const data = await Promise.all(rows.map(async r => ({ n: r[0], id: r[1], ...(await getFullStatus(r[1])) })));
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
         data.sort((a, b) => a.r - b.r);
-        const cards = data.map(p => `<div class="card"><a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none"><img src="${p.p}" class="avatar ${p.b}"></a><div style="margin:5px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        const cards = data.map(p => `
+            <div class="card">
+                <a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none">
+                    <img src="${p.p}" class="avatar ${p.b}">
+                </a>
+                <span class="name-label">${p.n}</span>
+                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            </div>`).join('');
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
         
-        // Alle 5 Buttons sind hier wieder enthalten:
         const navBar = `<div class="nav-bar">
             <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
             <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
@@ -213,7 +240,12 @@ app.get('/empfang', async (req, res) => {
         });
         finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
         const infoBox = (infoText && infoText.trim() !== "" && !infoText.startsWith("<!DOCTYPE")) ? `<div class="info-banner">📢 ${infoText}</div>` : "";
-        const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:5px 0;font-weight:bold;font-size:1.1rem">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        const cards = finalData.map(p => `
+            <div class="card">
+                <img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'">
+                <span class="name-label">${p.n}</span>
+                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            </div>`).join('');
         res.send(`<html>${htmlHead}<body class="empfang-body">${styles}<div class="container"><h1 class="empfang-header">Willkommen bei der Lebenshilfe Heidelberg e.V.</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
