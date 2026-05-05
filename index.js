@@ -183,18 +183,26 @@ app.get('/update', async (req, res) => {
         
         if (bis) {
             const [h, m] = bis.split(':');
-            // Erzeuge Datum in der Zeitzone des Servers
-            let d = new Date();
-            // Korrektur: Wir setzen Stunden und Minuten explizit
-            d.setHours(parseInt(h), parseInt(m), 0, 0);
             
-            // Falls die gewählte Zeit bereits in der Vergangenheit liegt (z.B. es ist 10:00 und man wählt 09:00), 
-            // gehen wir davon aus, dass der nächste Tag gemeint ist.
-            if (d < new Date()) {
-                d.setDate(d.getDate() + 1);
+            // 1. Hole die aktuelle Zeit in Deutschland (Berlin)
+            const nowInBerlin = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
+            
+            // 2. Erzeuge das Ziel-Datum basierend auf Berlin-Zeit
+            let targetDate = new Date(nowInBerlin);
+            targetDate.setHours(parseInt(h), parseInt(m), 0, 0);
+            
+            // 3. Falls die Zeit schon vorbei ist -> morgen
+            if (targetDate < nowInBerlin) {
+                targetDate.setDate(targetDate.getDate() + 1);
             }
             
-            expiration = Math.floor(d.getTime() / 1000);
+            // 4. Umrechnung: Wie viele Sekunden liegen zwischen "jetzt" und dem "Ziel" in Berlin?
+            const secondsDiff = Math.floor((targetDate.getTime() - nowInBerlin.getTime()) / 1000);
+            
+            // 5. Slack braucht den Zeitstempel in echter UTC-Zeit. 
+            // Wir nehmen die echte aktuelle Zeit des Servers und addieren die berechnete Differenz.
+            expiration = Math.floor(Date.now() / 1000) + secondsDiff;
+
             text += ` bis ${bis}`;
         }
 
@@ -204,13 +212,12 @@ app.get('/update', async (req, res) => {
                 profile: { 
                     status_text: text, 
                     status_emoji: emoji, 
-                    status_expiration: expiration // Slack erwartet hier eine Ganzzahl (Unix Epoch)
+                    status_expiration: expiration 
                 } 
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
             
-            // Cache sofort aktualisieren
             await updateData();
-        } catch (e) { console.error("Slack Update Error:", e.response ? e.response.data : e.message); }
+        } catch (e) { console.error("Slack Update Error"); }
     }
     res.redirect('/dashboard');
 });
