@@ -122,12 +122,27 @@ updateData();
 
 app.get('/empfang', (req, res) => {
     const data = [...cachedData];
+    // Sortierung: Büro-Leute nach oben, dann alphabetisch
     data.sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
+    
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
+    
     const cards = data.map(p => {
-        const isAwayFromDesk = p.r !== 1;
-        return `<div class="card" style="${isAwayFromDesk ? 'opacity:0.35' : ''}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${isAwayFromDesk ? 'bg-away' : p.c}">${p.e} ${p.t}</div></div>`;
+        // Empfang-Spezifische Logik: Nur R1 (Büro) wird farbig/echt angezeigt
+        const isAtOffice = p.r === 1;
+        const statusText = isAtOffice ? p.t : "Abwesend";
+        const statusEmoji = isAtOffice ? p.e : "⚪";
+        const statusClass = isAtOffice ? p.c : "bg-away";
+        const cardOpacity = isAtOffice ? "1.0" : "0.35";
+        
+        return `
+        <div class="card" style="opacity:${cardOpacity}">
+            ${renderAvatar(p)}
+            <span class="name-label">${p.n}</span>
+            <div class="status-badge ${statusClass}">${statusEmoji} ${statusText}</div>
+        </div>`;
     }).join('');
+    
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
 });
 
@@ -183,26 +198,16 @@ app.get('/update', async (req, res) => {
         
         if (bis) {
             const [h, m] = bis.split(':');
-            
-            // 1. Hole die aktuelle Zeit in Deutschland (Berlin)
             const nowInBerlin = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
-            
-            // 2. Erzeuge das Ziel-Datum basierend auf Berlin-Zeit
             let targetDate = new Date(nowInBerlin);
             targetDate.setHours(parseInt(h), parseInt(m), 0, 0);
             
-            // 3. Falls die Zeit schon vorbei ist -> morgen
             if (targetDate < nowInBerlin) {
                 targetDate.setDate(targetDate.getDate() + 1);
             }
             
-            // 4. Umrechnung: Wie viele Sekunden liegen zwischen "jetzt" und dem "Ziel" in Berlin?
             const secondsDiff = Math.floor((targetDate.getTime() - nowInBerlin.getTime()) / 1000);
-            
-            // 5. Slack braucht den Zeitstempel in echter UTC-Zeit. 
-            // Wir nehmen die echte aktuelle Zeit des Servers und addieren die berechnete Differenz.
             expiration = Math.floor(Date.now() / 1000) + secondsDiff;
-
             text += ` bis ${bis}`;
         }
 
