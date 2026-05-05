@@ -63,7 +63,6 @@ const styles = `
     width: 100%;
   }
 
-  /* Handy-Optimierung */
   @media (max-width: 600px) {
     .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .card { padding: 12px !important; }
@@ -92,7 +91,7 @@ const styles = `
     font-weight: bold; 
     font-size: 1.1rem; 
     margin-bottom: 5px; 
-    display: block; /* Erzwingt neue Zeile */
+    display: block; 
     min-height: 1.2em;
   }
 
@@ -105,7 +104,7 @@ const styles = `
     justify-content: center; 
     align-items: center;
     width: 90%;
-    margin-top: auto; /* Schiebt Status nach unten, falls Namen unterschiedlich lang */
+    margin-top: auto;
   }
 
   .bg-active { background: #1c3d22; color: #32d74b; border: 1px solid #245a2e; }
@@ -167,7 +166,16 @@ const htmlHead = `<head>
 // --- ROUTES ---
 app.get('/update', async (req, res) => {
     const { status, user, bis } = req.query;
-    const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
+    // Hier ist "weg" auf "Abwesend" gemappt
+    const map = { 
+        da: ["Im Büro", ":office:"], 
+        homeoffice: ["Homeoffice", ":house_with_garden:"], 
+        besprechung: ["Besprechung", ":calendar:"], 
+        unterwegs: ["Unterwegs", ":car:"], 
+        weg: ["Abwesend", ":wave:"],
+        krank: ["Krank", ":face_with_thermometer:"], 
+        urlaub: ["Urlaub", ":palm_tree:"] 
+    };
     let [text, emoji] = map[status] || ["Abwesend", ":wave:"];
     let expiration = 0;
     if (bis && bis.trim() !== "") {
@@ -214,9 +222,18 @@ app.get('/dashboard', async (req, res) => {
             <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn">⚠️ Server</a>
         </div>`;
 
+        // Dropdown Menü erweitert um "Abwesend"
         const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="localStorage.setItem('lastUser', document.getElementById('userSelect').value)">
             <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
-            <select name="status" required><option value="da">🏢 Büro</option><option value="homeoffice">🏡 Home</option><option value="besprechung">🗓️ Termin</option><option value="unterwegs">🚗 Weg</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option></select>
+            <select name="status" required>
+                <option value="da">🏢 Büro</option>
+                <option value="homeoffice">🏡 Home</option>
+                <option value="besprechung">🗓️ Termin</option>
+                <option value="unterwegs">🚗 Weg</option>
+                <option value="weg">🌊 Abwesend</option>
+                <option value="krank">🤒 Krank</option>
+                <option value="urlaub">🌴 Urlaub</option>
+            </select>
             <input type="time" name="bis">
             <button type="submit" class="btn-update">OK</button>
         </form><script>if(localStorage.getItem('lastUser')) document.getElementById('userSelect').value = localStorage.getItem('lastUser');</script>`;
