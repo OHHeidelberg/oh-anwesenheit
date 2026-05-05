@@ -63,7 +63,6 @@ function renderAvatar(person) {
            <div class="avatar-placeholder ${borderColor}" style="display:none;">${firstLetter}</div>`
         : `<div class="avatar-placeholder ${borderColor}">${firstLetter}</div>`;
     
-    // Slack Deep Link Integration
     if (person.id && person.id !== "kein") {
         return `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>`;
     }
