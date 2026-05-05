@@ -179,24 +179,38 @@ app.get('/update', async (req, res) => {
             weg: ["Abwesend", ":wave:"] 
         };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
-        let exp = 0;
+        let expiration = 0;
         
         if (bis) {
             const [h, m] = bis.split(':');
-            const d = new Date();
+            // Erzeuge Datum in der Zeitzone des Servers
+            let d = new Date();
+            // Korrektur: Wir setzen Stunden und Minuten explizit
             d.setHours(parseInt(h), parseInt(m), 0, 0);
-            if (d < new Date()) d.setDate(d.getDate() + 1);
-            exp = Math.floor(d.getTime() / 1000);
+            
+            // Falls die gewählte Zeit bereits in der Vergangenheit liegt (z.B. es ist 10:00 und man wählt 09:00), 
+            // gehen wir davon aus, dass der nächste Tag gemeint ist.
+            if (d < new Date()) {
+                d.setDate(d.getDate() + 1);
+            }
+            
+            expiration = Math.floor(d.getTime() / 1000);
             text += ` bis ${bis}`;
         }
 
         try {
             await axios.post('https://slack.com/api/users.profile.set', { 
                 user: person.id.trim(), 
-                profile: { status_text: text, status_emoji: emoji, status_expiration: exp } 
+                profile: { 
+                    status_text: text, 
+                    status_emoji: emoji, 
+                    status_expiration: expiration // Slack erwartet hier eine Ganzzahl (Unix Epoch)
+                } 
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            
+            // Cache sofort aktualisieren
             await updateData();
-        } catch (e) { console.error("Slack Update Error"); }
+        } catch (e) { console.error("Slack Update Error:", e.response ? e.response.data : e.message); }
     }
     res.redirect('/dashboard');
 });
