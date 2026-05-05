@@ -79,11 +79,16 @@ async function getFullStatus(id, name) {
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
         
-        // Standard-Status (Online/Abwesend)
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 8 };
-        if (online && !txt) res.r = 2; // Rang 2: Nur Online
+        
+        // Status: Online (ohne Text) -> In Dashboard GRÜN, im Empfang abwesend
+        if (online && !txt) { 
+            res.r = 2; 
+            res.c = "bg-active"; 
+            res.b = "border-active"; 
+            res.e = "🟢";
+        }
 
-        // Spezifische Status-Regeln & Ranking
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; }
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🗓️"; }
@@ -116,17 +121,15 @@ updateData();
 
 app.get('/empfang', (req, res) => {
     const data = [...cachedData];
-    // Sortierung: Im Büro (r=1) zuerst, dann der Rest alphabetisch
     data.sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
-    
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
     const cards = data.map(p => {
-        // NUR Status "Im Büro" (Rang 1) wird voll angezeigt. "Online" (Rang 2) gilt als abwesend.
-        const isNotAtDesk = p.r !== 1; 
-        return `<div class="card" style="${isNotAtDesk ? 'opacity:0.35' : ''}">
+        // NUR Rang 1 (Büro) bleibt farbig. Rang 2 (Online) wird im Empfang wie Abwesend (opacity 0.35) behandelt.
+        const isNotPhysicalPresent = p.r !== 1;
+        return `<div class="card" style="${isNotPhysicalPresent ? 'opacity:0.35' : ''}">
             <div class="avatar-container">${renderAvatar(p)}</div>
             <span class="name-label">${p.n}</span>
-            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            <div class="status-badge ${isNotPhysicalPresent ? 'bg-away' : p.c}">${p.e} ${p.t}</div>
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
