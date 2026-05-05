@@ -33,7 +33,7 @@ async function resetAllStatuses() {
 }
 cron.schedule('0 0 * * *', () => resetAllStatuses(), { timezone: "Europe/Berlin" });
 
-// --- STYLES ---
+// --- STYLES (Optimiert für den langen Titel ohne Scrollbar) ---
 const styles = `
 <style>
   :root {
@@ -53,7 +53,7 @@ const styles = `
     padding: 0;
     width: 100vw;
     height: 100vh;
-    overflow: hidden; /* Entfernt die Scrollbars komplett */
+    overflow: hidden;
     animation: pixelShift 600s infinite alternate linear;
   }
   @keyframes pixelShift {
@@ -67,57 +67,55 @@ const styles = `
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    padding-top: 2vh;
+    padding-top: 1vh;
     box-sizing: border-box;
   }
   
-  /* Navigation (nur Dashboard) */
-  .nav-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-  .nav-btn { 
-    text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; 
-    font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; display: flex; align-items: center; gap: 8px; 
-  }
-
-  /* Grid System optimiert für Screen-Filling */
   .grid { 
     display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
-    gap: 2vh; 
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
+    gap: 1.5vh; 
     width: 100%; 
     justify-content: center;
     overflow: hidden; 
   }
 
   .card { 
-    background: var(--card-bg); padding: 1.5vh; border-radius: 20px; text-align: center; 
+    background: var(--card-bg); padding: 1.2vh; border-radius: 18px; text-align: center; 
     box-shadow: 0 8px 20px rgba(0,0,0,0.6); border: 1px solid #3d3d40; 
   }
   
-  .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; margin-bottom: 5px; }
+  .avatar { width: 70px; height: 70px; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; margin-bottom: 5px; }
   .border-active { border-color: #32d74b; }
   .border-red { border-color: #ff453a; }
   .border-home { border-color: #ffd60a; }
   .border-away { border-color: #48484a; filter: grayscale(1); opacity: 0.5; }
 
-  .status-badge { margin-top: 8px; padding: 6px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: flex; justify-content: center; align-items: center; }
+  .status-badge { margin-top: 5px; padding: 5px; border-radius: 10px; font-size: 0.8rem; font-weight: 700; display: flex; justify-content: center; align-items: center; }
   .bg-active { background: #1c3d22; color: #32d74b; border: 1px solid #245a2e; }
   .bg-red { background: #3d1c1c; color: #ff453a; border: 1px solid #632323; }
   .bg-home { background: #3d361c; color: #ffd60a; border: 1px solid #5a4b14; }
   .bg-away { background: #2c2c2e; color: #8e8e93; border: 1px solid #3a3a3c; }
 
-  /* Banner-Größe reduziert für bessere Platznutzung */
   .info-banner { 
     width: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; 
-    padding: 2vh; border-radius: 20px; margin-bottom: 3vh; font-size: 1.8rem; 
+    padding: 1.5vh; border-radius: 15px; margin-bottom: 2vh; font-size: 1.5rem; 
     font-weight: bold; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; border: 1px solid #0056b3;
   }
   
-  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #1c1c1e; border-top: 1px solid #333; padding: 15px; display: flex; justify-content: center; gap: 8px; z-index: 1000; }
-  select, button, input { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 8px; }
-  .btn-update { background: var(--accent-blue); color: #fff; border: none; font-weight: bold; cursor: pointer; }
-  .empfang-header { font-size: 3rem; margin: 1vh 0 2vh 0; color: #fff; letter-spacing: -1px; }
+  .empfang-header { 
+    font-size: 2.2rem; /* Schriftgröße deutlich reduziert */
+    margin: 1vh 0; 
+    color: #fff; 
+    letter-spacing: -0.5px; 
+    text-align: center;
+    line-height: 1.2;
+    width: 100%;
+  }
 
-  /* Dashboard braucht Scrollen, Empfang nicht */
+  .nav-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap; }
+  .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 8px 15px; border-radius: 20px; font-size: 0.85rem; border: 1px solid #3a3a3c; }
+  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #1c1c1e; padding: 10px; display: flex; justify-content: center; gap: 5px; z-index: 1000; }
   .is-dashboard { overflow-y: auto !important; height: auto !important; }
 </style>`;
 
@@ -175,7 +173,7 @@ app.get('/dashboard', async (req, res) => {
         const data = await Promise.all(rows.map(async r => ({ n: r[0], id: r[1], ...(await getFullStatus(r[1])) })));
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
         data.sort((a, b) => a.r - b.r);
-        const cards = data.map(p => `<div class="card"><a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none"><img src="${p.p}" class="avatar ${p.b}"></a><div style="margin:8px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        const cards = data.map(p => `<div class="card"><a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none"><img src="${p.p}" class="avatar ${p.b}"></a><div style="margin:5px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
         const navBar = `<div class="nav-bar">
             <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn btn-krank">🤒 Krankmelden</a>
@@ -187,8 +185,8 @@ app.get('/dashboard', async (req, res) => {
         const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="localStorage.setItem('lastUser', document.getElementById('userSelect').value)">
             <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
             <select name="status" required><option value="da">🏢 Im Büro</option><option value="homeoffice">🏡 Homeoffice</option><option value="besprechung">🗓️ Besprechung</option><option value="unterwegs">🚗 Unterwegs</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option><option value="weg">⚪ Abwesend</option></select>
-            <input type="time" name="bis">
-            <button type="submit" class="btn-update">Update</button>
+            <input type="time" name="bis" style="width:100px">
+            <button type="submit" style="background:var(--accent-blue);font-weight:bold;cursor:pointer">Update</button>
         </form><script>if(localStorage.getItem('lastUser')) document.getElementById('userSelect').value = localStorage.getItem('lastUser');</script>`;
         res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body class="is-dashboard">${styles}<div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div></div>${footerForm}</body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
@@ -210,8 +208,8 @@ app.get('/empfang', async (req, res) => {
         });
         finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
         const infoBox = (infoText && infoText.trim() !== "" && !infoText.startsWith("<!DOCTYPE")) ? `<div class="info-banner">📢 ${infoText}</div>` : "";
-        const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:8px 0;font-weight:bold;font-size:1.1rem">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body>${styles}<div class="container"><h1 class="empfang-header">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
+        const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:5px 0;font-weight:bold;font-size:1rem">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body>${styles}<div class="container"><h1 class="empfang-header">Willkommen bei der Lebenshilfe Heidelberg e.V.</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
