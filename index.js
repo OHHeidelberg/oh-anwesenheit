@@ -29,7 +29,7 @@ const styles = `
   .container { width: 95%; padding: 20px 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; width: 100%; }
   .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; transition: opacity 0.3s; }
-  .avatar-container { width: 80px; height: 80px; margin-bottom: 10px; position: relative; }
+  .avatar-container { width: 80px; height: 80px; margin-bottom: 10px; position: relative; cursor: pointer; text-decoration: none; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; background: #3a3a3c; }
   .avatar-placeholder { 
     width: 80px; height: 80px; border-radius: 50%; border: 3px solid #48484a;
@@ -58,12 +58,16 @@ function renderAvatar(person) {
     const hasPhoto = person.p && person.p.includes('http') && !person.p.includes('placeholder');
     const firstLetter = person.n ? person.n.charAt(0) : '?';
     const borderColor = person.b || 'border-away';
-    if (hasPhoto) {
-        return `<img src="${person.p}" class="avatar ${borderColor}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="avatar-placeholder ${borderColor}" style="display:none;">${firstLetter}</div>`;
-    } else {
-        return `<div class="avatar-placeholder ${borderColor}">${firstLetter}</div>`;
+    const content = hasPhoto 
+        ? `<img src="${person.p}" class="avatar ${borderColor}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+           <div class="avatar-placeholder ${borderColor}" style="display:none;">${firstLetter}</div>`
+        : `<div class="avatar-placeholder ${borderColor}">${firstLetter}</div>`;
+    
+    // Slack Deep Link Integration
+    if (person.id && person.id !== "kein") {
+        return `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>`;
     }
+    return `<div class="avatar-container">${content}</div>`;
 }
 
 async function getFullStatus(id, name) {
@@ -123,14 +127,14 @@ app.get('/empfang', (req, res) => {
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
     const cards = data.map(p => {
         const isAwayFromDesk = p.r !== 1;
-        return `<div class="card" style="${isAwayFromDesk ? 'opacity:0.35' : ''}"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${isAwayFromDesk ? 'bg-away' : p.c}">${p.e} ${p.t}</div></div>`;
+        return `<div class="card" style="${isAwayFromDesk ? 'opacity:0.35' : ''}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${isAwayFromDesk ? 'bg-away' : p.c}">${p.e} ${p.t}</div></div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
 });
 
 app.get('/dashboard', (req, res) => {
     const data = [...cachedData].sort((a, b) => a.r - b.r || a.n.localeCompare(b.n));
-    const cards = data.map(p => `<div class="card"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+    const cards = data.map(p => `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}" ${u.n === lastSelectedUser ? "selected" : ""}>${u.n}</option>`).join('');
     
     const navBar = `
@@ -183,19 +187,14 @@ app.get('/update', async (req, res) => {
             const d = new Date();
             d.setHours(parseInt(h), parseInt(m), 0, 0);
             if (d < new Date()) d.setDate(d.getDate() + 1);
-            exp = Math.floor(d.getTime() / 1000); // Unix Zeitstempel für Slack
+            exp = Math.floor(d.getTime() / 1000);
             text += ` bis ${bis}`;
         }
 
         try {
-            // Slack API Call mit expliziter Expiration
             await axios.post('https://slack.com/api/users.profile.set', { 
                 user: person.id.trim(), 
-                profile: { 
-                    status_text: text, 
-                    status_emoji: emoji, 
-                    status_expiration: exp 
-                } 
+                profile: { status_text: text, status_emoji: emoji, status_expiration: exp } 
             }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
             await updateData();
         } catch (e) { console.error("Slack Update Error"); }
