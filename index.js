@@ -23,13 +23,11 @@ const htmlHead = `
 
 const styles = `
 <style>
-  :root { --bg-color: #000; --card-bg: #2c2c2e; --text-color: #fff; }
+  :root { --bg-color: #000; --card-bg: #2c2c2e; --text-color: #fff; --accent-blue: #007aff; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; display: flex; flex-direction: column; align-items: center; }
   .container { width: 95%; padding: 20px 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; width: 100%; }
   .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; }
-  
-  /* Foto & Platzhalter Styling */
   .avatar-container { width: 80px; height: 80px; margin-bottom: 10px; position: relative; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; background: #3a3a3c; }
   .avatar-placeholder { 
@@ -37,22 +35,22 @@ const styles = `
     background: #444; color: #aaa; display: flex; align-items: center; justify-content: center;
     font-size: 2rem; font-weight: bold; text-transform: uppercase;
   }
-
   .border-active { border-color: #32d74b !important; }
   .name-label { font-weight: bold; font-size: 1.1rem; margin-bottom: 5px; }
   .status-badge { padding: 6px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; width: 90%; margin-top: auto; }
   .bg-active { background: #1c3d22; color: #32d74b; } .bg-away { background: #2c2c2e; color: #8e8e93; }
   .info-banner { width: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; padding: 20px; border-radius: 18px; margin-bottom: 25px; font-size: 1.6rem; font-weight: bold; text-align: center; }
-  .footer-bar { position: fixed; bottom: 0; width: 100%; background: #1c1c1e; padding: 15px; display: flex; justify-content: center; gap: 10px; border-top: 1px solid #333; }
+  .nav-bar { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; justify-content: center; }
+  .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; }
+  .footer-bar { position: fixed; bottom: 0; width: 100%; background: #1c1c1e; padding: 15px; display: flex; justify-content: center; gap: 10px; border-top: 1px solid #333; z-index: 1000; }
   select, button { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 10px; font-size: 1rem; }
+  .btn-update { background: var(--accent-blue); border: none; font-weight: bold; cursor: pointer; }
 </style>`;
 
-// Erzeugt ein Bild oder einen Platzhalter-Buchstaben
 function renderAvatar(person) {
     const hasPhoto = person.p && person.p.includes('http') && !person.p.includes('placeholder');
     const firstLetter = person.n ? person.n.charAt(0) : '?';
     const borderColor = person.b || 'border-away';
-
     if (hasPhoto) {
         return `<img src="${person.p}" class="avatar ${borderColor}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="avatar-placeholder ${borderColor}" style="display:none;">${firstLetter}</div>`;
@@ -104,27 +102,27 @@ updateData();
 
 app.get('/empfang', (req, res) => {
     const finalData = cachedData.filter(p => p.t.toLowerCase().includes("büro") || p.t.toLowerCase().includes("da") || p.r === 1);
-    finalData.sort((a, b) => a.n.localeCompare(b.n));
+    finalData.sort((a, b) => a.n.compare(b.n));
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
-    const cards = finalData.map(p => `
-        <div class="card">
-            <div class="avatar-container">${renderAvatar(p)}</div>
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-        </div>`).join('');
+    const cards = finalData.map(p => `<div class="card"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
 });
 
 app.get('/dashboard', (req, res) => {
     const data = [...cachedData].sort((a, b) => a.r - b.r);
-    const cards = data.map(p => `
-        <div class="card">
-            <div class="avatar-container">${renderAvatar(p)}</div>
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-        </div>`).join('');
+    const cards = data.map(p => `<div class="card"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
-    res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1>Dashboard</h1><div class="grid">${cards}</div></div><div style="height:120px"></div><form action="/update" class="footer-bar"><select name="user">${userOptions}</select><button type="submit">📍 Ich bin da</button></form></body></html>`);
+    
+    // NAVIGATION WIEDER EINGEBAUT
+    const navBar = `
+    <div class="nav-bar">
+        <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
+        <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn">✉️ Outlook</a>
+        <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
+    </div>`;
+
+    res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:150px"></div><form action="/update" class="footer-bar"><select name="user">${userOptions}</select><button type="submit" class="btn-update">📍 Ich bin da</button></form></body></html>`);
 });
 
 app.get('/update', async (req, res) => {
