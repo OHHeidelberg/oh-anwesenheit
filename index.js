@@ -10,6 +10,7 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 
 let cachedData = [];
 let cachedInfoText = "";
+let lastSelectedUser = ""; 
 
 const htmlHead = `
 <head>
@@ -38,6 +39,7 @@ const styles = `
   .border-active { border-color: #32d74b !important; }
   .border-home { border-color: #ffd60a !important; }
   .border-red { border-color: #ff453a !important; }
+  .border-away { border-color: #48484a !important; }
   .name-label { font-weight: bold; font-size: 1.1rem; margin-bottom: 5px; }
   .status-badge { padding: 6px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; width: 90%; margin-top: auto; }
   .bg-active { background: #1c3d22; color: #32d74b; }
@@ -81,21 +83,16 @@ async function getFullStatus(id, name) {
         
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 8 };
         
-        // Dashboard-Sonderfall: Nur Online (Rang 2) wird grün angezeigt
         if (online && !txt) { 
-            res.r = 2; 
-            res.c = "bg-active"; 
-            res.b = "border-active"; 
-            res.e = "🟢";
+            res.r = 2; res.c = "bg-active"; res.b = "border-active"; res.e = "🟢";
         }
 
-        // Hierarchie-Mapping
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; }
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.b="border-red"; res.r=5; res.e="🚗"; }
-        else if (lowTxt.includes("krank")) { res.c="bg-red"; res.b="border-red"; res.r=6; res.e="🤒"; }
-        else if (lowTxt.includes("urlaub")) { res.c="bg-red"; res.b="border-red"; res.r=7; res.e="🌴"; }
+        else if (lowTxt.includes("krank")) { res.c="bg-away"; res.b="border-away"; res.r=6; res.e="🤒"; }
+        else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.b="border-away"; res.r=7; res.e="🌴"; }
         
         return res;
     } catch (e) { 
@@ -122,29 +119,19 @@ updateData();
 
 app.get('/empfang', (req, res) => {
     const data = [...cachedData];
-    // Sortierung: Büro-Leute (Rang 1) zuerst, Rest alphabetisch
     data.sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
-    
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
-    
     const cards = data.map(p => {
-        // NUR Rang 1 (Büro) wird im Empfang farbig markiert. ALLES andere (inkl. Online) ist abwesend.
         const isAwayFromDesk = p.r !== 1;
-        return `
-        <div class="card" style="${isAwayFromDesk ? 'opacity:0.35' : ''}">
-            <div class="avatar-container">${renderAvatar(p)}</div>
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${isAwayFromDesk ? 'bg-away' : p.c}">${p.e} ${p.t}</div>
-        </div>`;
+        return `<div class="card" style="${isAwayFromDesk ? 'opacity:0.35' : ''}"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${isAwayFromDesk ? 'bg-away' : p.c}">${p.e} ${p.t}</div></div>`;
     }).join('');
-    
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
 });
 
 app.get('/dashboard', (req, res) => {
     const data = [...cachedData].sort((a, b) => a.r - b.r || a.n.localeCompare(b.n));
     const cards = data.map(p => `<div class="card"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
-    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}" ${u.n === lastSelectedUser ? "selected" : ""}>${u.n}</option>`).join('');
     
     const navBar = `
     <div class="nav-bar">
@@ -157,7 +144,7 @@ app.get('/dashboard', (req, res) => {
 
     const footer = `
     <form action="/update" class="footer-bar">
-        <select name="user" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
+        <select name="user" required><option value="" disabled ${!lastSelectedUser ? "selected" : ""}>Mitarbeiter</option>${userOptions}</select>
         <select name="status">
             <option value="da">🏢 Büro</option>
             <option value="homeoffice">🏡 Home</option>
@@ -176,6 +163,7 @@ app.get('/dashboard', (req, res) => {
 
 app.get('/update', async (req, res) => {
     const { user, status, bis } = req.query;
+    lastSelectedUser = user;
     const person = cachedData.find(r => r.n === user);
     if (person && person.id && person.id !== "kein") {
         const map = { 
@@ -189,17 +177,28 @@ app.get('/update', async (req, res) => {
         };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let exp = 0;
+        
         if (bis) {
             const [h, m] = bis.split(':');
-            const d = new Date(); d.setHours(h, m, 0, 0);
+            const d = new Date();
+            d.setHours(parseInt(h), parseInt(m), 0, 0);
             if (d < new Date()) d.setDate(d.getDate() + 1);
-            exp = Math.floor(d.getTime() / 1000);
+            exp = Math.floor(d.getTime() / 1000); // Unix Zeitstempel für Slack
             text += ` bis ${bis}`;
         }
+
         try {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: exp } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            // Slack API Call mit expliziter Expiration
+            await axios.post('https://slack.com/api/users.profile.set', { 
+                user: person.id.trim(), 
+                profile: { 
+                    status_text: text, 
+                    status_emoji: emoji, 
+                    status_expiration: exp 
+                } 
+            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
             await updateData();
-        } catch (e) {}
+        } catch (e) { console.error("Slack Update Error"); }
     }
     res.redirect('/dashboard');
 });
