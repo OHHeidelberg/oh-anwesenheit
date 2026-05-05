@@ -10,7 +10,7 @@ const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?gid=1558993151&single=true&output=csv';
 
-// --- RESET LOGIK (Jeden Tag um 00:00 Uhr via Render Cloud) ---
+// --- RESET LOGIK ---
 async function resetAllStatuses() {
     try {
         const csv = await axios.get(CSV_URL);
@@ -33,13 +33,13 @@ async function resetAllStatuses() {
 }
 cron.schedule('0 0 * * *', () => resetAllStatuses(), { timezone: "Europe/Berlin" });
 
-// --- STYLES (DAUERHAFTER DARKMODE MIT GEHOBENEN KACHELN) ---
+// --- STYLES ---
 const styles = `
 <style>
   :root {
-    --bg-color: #000000;       /* Tiefschwarz für Display-Schutz */
-    --card-bg: #2c2c2e;        /* Anthrazit-Kacheln für Abhebung */
-    --text-color: #ffffff;     /* Weißer Text */
+    --bg-color: #000000;
+    --card-bg: #2c2c2e;
+    --text-color: #ffffff;
     --accent-blue: #007aff;
   }
   body {
@@ -50,8 +50,10 @@ const styles = `
     flex-direction: column;
     align-items: center;
     margin: 0;
-    padding: 10px 10px 140px 10px;
-    /* Anti-Burn-In Shifting */
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden; /* Entfernt die Scrollbars komplett */
     animation: pixelShift 600s infinite alternate linear;
   }
   @keyframes pixelShift {
@@ -59,45 +61,64 @@ const styles = `
     50% { transform: translate(1px, 1px); }
     100% { transform: translate(-1px, 0px); }
   }
-  .container { width: 98%; text-align: center; }
+  .container { 
+    width: 95%; 
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: 2vh;
+    box-sizing: border-box;
+  }
   
-  .nav-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; }
+  /* Navigation (nur Dashboard) */
+  .nav-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
   .nav-btn { 
-    text-decoration: none; background: #1c1c1e; color: #fff; padding: 12px 20px; border-radius: 25px; 
-    font-size: 0.95rem; font-weight: 700; border: 1px solid #3a3a3c; box-shadow: 0 4px 8px rgba(0,0,0,0.5); 
-    display: flex; align-items: center; gap: 8px; transition: 0.3s; 
+    text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; 
+    font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; display: flex; align-items: center; gap: 8px; 
   }
-  .nav-btn:hover { background: #3a3a3c; transform: translateY(-2px); border-color: var(--accent-blue); }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 25px; width: 100%; justify-content: center; }
+  /* Grid System optimiert für Screen-Filling */
+  .grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); 
+    gap: 2vh; 
+    width: 100%; 
+    justify-content: center;
+    overflow: hidden; 
+  }
+
   .card { 
-    background: var(--card-bg); padding: 20px; border-radius: 22px; text-align: center; 
-    box-shadow: 0 8px 20px rgba(0,0,0,0.6); max-width: 240px; margin: 0 auto; 
-    border: 1px solid #3d3d40; 
+    background: var(--card-bg); padding: 1.5vh; border-radius: 20px; text-align: center; 
+    box-shadow: 0 8px 20px rgba(0,0,0,0.6); border: 1px solid #3d3d40; 
   }
   
-  .avatar { width: 90px; height: 90px; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; margin-bottom: 10px; }
+  .avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; margin-bottom: 5px; }
   .border-active { border-color: #32d74b; }
   .border-red { border-color: #ff453a; }
   .border-home { border-color: #ffd60a; }
   .border-away { border-color: #48484a; filter: grayscale(1); opacity: 0.5; }
 
-  .status-badge { margin-top: 12px; padding: 8px; border-radius: 16px; font-size: 0.9rem; font-weight: 700; display: flex; justify-content: center; align-items: center; }
+  .status-badge { margin-top: 8px; padding: 6px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; display: flex; justify-content: center; align-items: center; }
   .bg-active { background: #1c3d22; color: #32d74b; border: 1px solid #245a2e; }
   .bg-red { background: #3d1c1c; color: #ff453a; border: 1px solid #632323; }
   .bg-home { background: #3d361c; color: #ffd60a; border: 1px solid #5a4b14; }
   .bg-away { background: #2c2c2e; color: #8e8e93; border: 1px solid #3a3a3c; }
 
+  /* Banner-Größe reduziert für bessere Platznutzung */
   .info-banner { 
-    width: 95%; background: linear-gradient(135deg, #004a99, #007aff); color: white; 
-    padding: 35px; border-radius: 24px; margin: 0 auto 45px auto; font-size: 2.4rem; 
-    font-weight: bold; box-shadow: 0 12px 30px rgba(0,0,0,0.7); text-align: center; border: 1px solid #0056b3;
+    width: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; 
+    padding: 2vh; border-radius: 20px; margin-bottom: 3vh; font-size: 1.8rem; 
+    font-weight: bold; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; border: 1px solid #0056b3;
   }
   
-  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #1c1c1e; border-top: 1px solid #333; padding: 20px; display: flex; justify-content: center; gap: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.5); z-index: 1000; flex-wrap: wrap; }
-  select, button, input { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 8px; font-size: 1rem; }
-  .btn-update { background: var(--accent-blue); color: #fff; border: none; cursor: pointer; font-weight: bold; }
-  .empfang-header { font-size: 3.8rem; margin-bottom: 35px; color: #fff; letter-spacing: -1px; }
+  .footer-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #1c1c1e; border-top: 1px solid #333; padding: 15px; display: flex; justify-content: center; gap: 8px; z-index: 1000; }
+  select, button, input { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 8px; }
+  .btn-update { background: var(--accent-blue); color: #fff; border: none; font-weight: bold; cursor: pointer; }
+  .empfang-header { font-size: 3rem; margin: 1vh 0 2vh 0; color: #fff; letter-spacing: -1px; }
+
+  /* Dashboard braucht Scrollen, Empfang nicht */
+  .is-dashboard { overflow-y: auto !important; height: auto !important; }
 </style>`;
 
 // --- HELPER: Slack Status holen ---
@@ -169,7 +190,7 @@ app.get('/dashboard', async (req, res) => {
             <input type="time" name="bis">
             <button type="submit" class="btn-update">Update</button>
         </form><script>if(localStorage.getItem('lastUser')) document.getElementById('userSelect').value = localStorage.getItem('lastUser');</script>`;
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head>${styles}<body><div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div></div>${footerForm}</body></html>`);
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body class="is-dashboard">${styles}<div class="container"><h1>Offene Hilfen Dashboard</h1>${navBar}<div class="grid">${cards}</div></div>${footerForm}</body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
@@ -189,8 +210,8 @@ app.get('/empfang', async (req, res) => {
         });
         finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
         const infoBox = (infoText && infoText.trim() !== "" && !infoText.startsWith("<!DOCTYPE")) ? `<div class="info-banner">📢 ${infoText}</div>` : "";
-        const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:12px 0;font-weight:bold;font-size:1.2rem">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
-        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body>${styles}<div class="container"><h1 class="empfang-header">Willkommen bei den Offenen Hilfen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
+        const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><div style="margin:8px 0;font-weight:bold;font-size:1.1rem">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+        res.send(`<html><head><meta http-equiv="refresh" content="60"></head><body>${styles}<div class="container"><h1 class="empfang-header">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
