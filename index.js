@@ -52,17 +52,10 @@ const styles = `
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    animation: pixelShift 600s infinite alternate linear;
-  }
-  @keyframes pixelShift {
-    0% { transform: translate(0, 0); }
-    50% { transform: translate(1px, 1px); }
-    100% { transform: translate(-1px, 0px); }
   }
 
   .container { width: 95%; padding: 20px 0; box-sizing: border-box; }
 
-  /* Grid-Logik: Standard für Desktop/Monitor */
   .grid { 
     display: grid; 
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
@@ -70,17 +63,15 @@ const styles = `
     width: 100%;
   }
 
-  /* Handy-Optimierung für das Dashboard */
+  /* Handy-Optimierung */
   @media (max-width: 600px) {
-    .grid {
-      grid-template-columns: repeat(2, 1fr); /* 2 Spalten auf dem Handy */
-      gap: 12px;
-    }
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .card { padding: 12px !important; }
     .avatar { width: 65px !important; height: 65px !important; }
-    .status-badge { font-size: 0.75rem !important; }
     h1 { font-size: 1.5rem !important; }
-    .footer-bar { flex-direction: column; height: auto !important; padding: 15px !important; }
+    .nav-bar { gap: 8px !important; }
+    .nav-btn { font-size: 0.75rem !important; padding: 8px 10px !important; }
+    .footer-bar { flex-direction: column; padding: 15px !important; }
     .footer-bar input, .footer-bar select, .footer-bar button { width: 100% !important; margin-bottom: 8px; }
   }
 
@@ -109,9 +100,8 @@ const styles = `
   
   .empfang-header { font-size: 2.2rem; margin-bottom: 20px; text-align: center; width: 100%; line-height: 1.2; }
 
-  /* Navigation & Footer */
-  .nav-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-  .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 15px; border-radius: 20px; font-size: 0.85rem; border: 1px solid #3a3a3c; font-weight: bold; }
+  .nav-bar { display: flex; gap: 12px; justify-content: center; margin-bottom: 25px; flex-wrap: wrap; }
+  .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; display: flex; align-items: center; gap: 8px; }
 
   .footer-bar { 
     position: fixed; bottom: 0; left: 0; width: 100%; background: #1c1c1e; 
@@ -121,9 +111,7 @@ const styles = `
   select, button, input { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 10px; font-size: 1rem; }
   .btn-update { background: var(--accent-blue); border: none; font-weight: bold; cursor: pointer; min-width: 80px; }
 
-  /* Spezial-Klasse für Monitor-Empfang (kein Scrollen) */
   .empfang-body { overflow: hidden; height: 100vh; }
-  .empfang-body .container { padding-bottom: 0; }
 </style>`;
 
 // --- HELPER: Slack Status holen ---
@@ -189,18 +177,23 @@ app.get('/dashboard', async (req, res) => {
         data.sort((a, b) => a.r - b.r);
         const cards = data.map(p => `<div class="card"><a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none"><img src="${p.p}" class="avatar ${p.b}"></a><div style="margin:5px 0;font-weight:bold">${p.n}</div><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+        
+        // Alle 5 Buttons sind hier wieder enthalten:
         const navBar = `<div class="nav-bar">
             <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
             <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-            <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn">✉️ Mail</a>
+            <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn">✉️ Outlook</a>
+            <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn">⚠️ Server</a>
         </div>`;
+
         const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="localStorage.setItem('lastUser', document.getElementById('userSelect').value)">
             <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
             <select name="status" required><option value="da">🏢 Büro</option><option value="homeoffice">🏡 Home</option><option value="besprechung">🗓️ Termin</option><option value="unterwegs">🚗 Weg</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option></select>
             <input type="time" name="bis">
             <button type="submit" class="btn-update">OK</button>
         </form><script>if(localStorage.getItem('lastUser')) document.getElementById('userSelect').value = localStorage.getItem('lastUser');</script>`;
-        res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:120px"></div>${footerForm}</body></html>`);
+        res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:150px"></div>${footerForm}</body></html>`);
     } catch (e) { res.status(500).send("Fehler."); }
 });
 
