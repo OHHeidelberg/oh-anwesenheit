@@ -27,7 +27,7 @@ const styles = `
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; display: flex; flex-direction: column; align-items: center; }
   .container { width: 95%; padding: 20px 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; width: 100%; }
-  .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; }
+  .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; transition: opacity 0.3s; }
   .avatar-container { width: 80px; height: 80px; margin-bottom: 10px; position: relative; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; background: #3a3a3c; }
   .avatar-placeholder { 
@@ -36,15 +36,20 @@ const styles = `
     font-size: 2rem; font-weight: bold; text-transform: uppercase;
   }
   .border-active { border-color: #32d74b !important; }
+  .border-home { border-color: #ffd60a !important; }
+  .border-red { border-color: #ff453a !important; }
   .name-label { font-weight: bold; font-size: 1.1rem; margin-bottom: 5px; }
   .status-badge { padding: 6px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; width: 90%; margin-top: auto; }
-  .bg-active { background: #1c3d22; color: #32d74b; } .bg-away { background: #2c2c2e; color: #8e8e93; }
+  .bg-active { background: #1c3d22; color: #32d74b; }
+  .bg-home { background: #3d361c; color: #ffd60a; }
+  .bg-red { background: #3d1c1c; color: #ff453a; }
+  .bg-away { background: #2c2c2e; color: #8e8e93; }
   .info-banner { width: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; padding: 20px; border-radius: 18px; margin-bottom: 25px; font-size: 1.6rem; font-weight: bold; text-align: center; }
   .nav-bar { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; justify-content: center; }
-  .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; display: flex; align-items: center; }
-  .footer-bar { position: fixed; bottom: 0; width: 100%; background: #1c1c1e; padding: 20px; display: flex; justify-content: center; align-items: center; gap: 15px; border-top: 1px solid #333; z-index: 1000; box-sizing: border-box; }
-  select, button { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 10px; font-size: 1rem; }
-  .btn-update { background: var(--accent-blue); border: none; font-weight: bold; cursor: pointer; min-width: 120px; }
+  .nav-btn { text-decoration: none; background: #1c1c1e; color: #fff; padding: 10px 18px; border-radius: 25px; font-size: 0.9rem; font-weight: 700; border: 1px solid #3a3a3c; }
+  .footer-bar { position: fixed; bottom: 0; width: 100%; background: #1c1c1e; padding: 15px; display: flex; justify-content: center; align-items: center; gap: 10px; border-top: 1px solid #333; z-index: 1000; flex-wrap: wrap; }
+  select, button, input { background: #2c2c2e; color: #fff; border: 1px solid #444; padding: 12px; border-radius: 10px; font-size: 1rem; }
+  .btn-update { background: var(--accent-blue); border: none; font-weight: bold; cursor: pointer; }
 </style>`;
 
 function renderAvatar(person) {
@@ -74,9 +79,11 @@ async function getFullStatus(id, name) {
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", b: "border-away", p: prof.image_192, r: 6 };
-        if (lowTxt.includes("büro") || lowTxt.includes("da") || (online && !txt)) { 
-            res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; 
-        }
+        
+        if (lowTxt.includes("büro") || lowTxt.includes("da") || (online && !txt)) { res.c="bg-active"; res.b="border-active"; res.r=1; res.e="🏢"; }
+        else if (lowTxt.includes("home")) { res.c="bg-home"; res.b="border-home"; res.r=3; res.e="🏡"; }
+        else if (lowTxt.includes("unterwegs") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.b="border-red"; res.r=4; res.e="🗓️"; }
+        
         return res;
     } catch (e) { 
         return { t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away", p: null, r: 9 };
@@ -94,17 +101,24 @@ async function updateData() {
         if (newData.length > 0) cachedData = newData;
         const infoCsv = await axios.get(INFO_URL, { timeout: 5000 }).catch(() => null);
         if (infoCsv) cachedInfoText = infoCsv.data.split('\n')[0];
-    } catch (e) { console.log("Update failed, using cache"); }
+    } catch (e) { console.log("Update failed"); }
 }
 
 setInterval(updateData, 120000);
 updateData();
 
 app.get('/empfang', (req, res) => {
-    const finalData = cachedData.filter(p => p.t.toLowerCase().includes("büro") || p.t.toLowerCase().includes("da") || p.r === 1);
-    finalData.sort((a, b) => a.n.localeCompare(b.n));
+    const data = [...cachedData];
+    data.sort((a, b) => (a.r > 2) - (b.r > 2) || a.n.localeCompare(b.n));
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
-    const cards = finalData.map(p => `<div class="card"><div class="avatar-container">${renderAvatar(p)}</div><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+    const cards = data.map(p => {
+        const isAway = p.r > 2;
+        return `<div class="card" style="${isAway ? 'opacity:0.4' : ''}">
+            <div class="avatar-container">${renderAvatar(p)}</div>
+            <span class="name-label">${p.n}</span>
+            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+        </div>`;
+    }).join('');
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
 });
 
@@ -122,16 +136,40 @@ app.get('/dashboard', (req, res) => {
         <a href="https://status.render.com/" target="_blank" class="nav-btn">⚠️ Serverprobleme</a>
     </div>`;
 
-    res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:180px"></div><form action="/update" class="footer-bar"><select name="user" style="flex-grow:1; max-width:400px;">${userOptions}</select><button type="submit" class="btn-update">📍 Ich bin da</button></form></body></html>`);
+    const footer = `
+    <form action="/update" class="footer-bar">
+        <select name="user" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
+        <select name="status">
+            <option value="da">🏢 Büro</option>
+            <option value="homeoffice">🏡 Home</option>
+            <option value="besprechung">🗓️ Termin</option>
+            <option value="unterwegs">🚗 Weg</option>
+            <option value="weg">🌊 Abwesend</option>
+        </select>
+        <input type="time" name="bis">
+        <button type="submit" class="btn-update">Update</button>
+    </form>`;
+
+    res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:150px"></div>${footer}</body></html>`);
 });
 
 app.get('/update', async (req, res) => {
-    const { user } = req.query;
+    const { user, status, bis } = req.query;
     const person = cachedData.find(r => r.n === user);
     if (person && person.id && person.id !== "kein") {
+        const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], weg: ["Abwesend", ":wave:"] };
+        let [text, emoji] = map[status] || ["Im Büro", ":office:"];
+        let exp = 0;
+        if (bis) {
+            const [h, m] = bis.split(':');
+            const d = new Date(); d.setHours(h, m, 0, 0);
+            if (d < new Date()) d.setDate(d.getDate() + 1);
+            exp = Math.floor(d.getTime() / 1000);
+            text += ` bis ${bis}`;
+        }
         try {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: "Im Büro", status_emoji: ":office:" } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
-            updateData();
+            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: exp } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            await updateData();
         } catch (e) {}
     }
     res.redirect('/dashboard');
