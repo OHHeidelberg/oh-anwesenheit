@@ -17,33 +17,19 @@ const htmlHead = `
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>OH Dashboard</title>
     <script>
-        // Versucht alle 30 Sekunden neu zu laden, falls die Seite hängen bleibt oder ein Fehler auftritt
         setTimeout(function(){
            window.location.reload(true);
         }, 60000);
-
-        // Falls die Verbindung offline geht, periodisch prüfen
-        window.addEventListener('offline', () => {
-            console.log('Offline... warte auf Verbindung');
-        });
         window.addEventListener('online', () => {
             window.location.reload(true);
         });
     </script>
 </head>`;
 
-// --- ERROR PAGE FALLBACK ---
-// Falls Daten nicht geladen werden können, zeigen wir diese Seite, die sich selbst neu lädt
 const errorPage = (msg) => `<html>${htmlHead}<body style="background:#000;color:#555;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;text-align:center;">
-    <div>
-        <h2>Verbindung wird neu aufgebaut...</h2>
-        <p style="font-size:0.8rem;">${msg || 'Server-Timeout'}</p>
-        <div style="margin-top:20px; border:2px solid #333; border-top:2px solid #007aff; border-radius:50%; width:30px; height:30px; animation: spin 1s linear infinite; display:inline-block;"></div>
-    </div>
-    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+    <div><h2>Verbindung wird neu aufgebaut...</h2><p style="font-size:0.8rem;">${msg || 'Server-Timeout'}</p></div>
 </body></html>`;
 
-// (Styles & getFullStatus bleiben gleich wie zuvor...)
 const styles = `
 <style>
   :root { --bg-color: #000000; --card-bg: #2c2c2e; --text-color: #ffffff; --accent-blue: #007aff; }
@@ -93,30 +79,66 @@ async function getFullStatus(id) {
     } catch (e) { return { t: "Unbekannt", e: "❓", c: "bg-away", b: "border-away", r: 9, p: 'https://via.placeholder.com/192' }; }
 }
 
+// --- NEU: RESET LOGIK ---
+async function resetAllStatuses() {
+    try {
+        const csv = await axios.get(CSV_URL);
+        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        for (const row of rows) {
+            const slackId = row[1].trim();
+            if (!slackId) continue;
+            const profile = await axios.get(`https://slack.com/api/users.profile.get?user=${slackId}`, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+            const currentText = (profile.data.profile.status_text || "").toLowerCase();
+            if (currentText.includes("urlaub") || currentText.includes("krank")) continue;
+            await axios.post('https://slack.com/api/users.profile.set', { user: slackId, profile: { status_text: "", status_emoji: "" } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+        }
+    } catch (e) {}
+}
+cron.schedule('0 0 * * *', () => resetAllStatuses(), { timezone: "Europe/Berlin" });
+
 // --- ROUTES ---
+
+// DIE FEHLENDE UPDATE-ROUTE:
+app.get('/update', async (req, res) => {
+    const { status, user, bis } = req.query;
+    const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], weg: ["Abwesend", ":wave:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"] };
+    let [text, emoji] = map[status] || ["Abwesend", ":wave:"];
+    let expiration = 0;
+    if (bis && bis.trim() !== "") {
+        const [hours, minutes] = bis.split(':');
+        const expireDate = new Date();
+        expireDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        if (expireDate < new Date()) expireDate.setDate(expireDate.getDate() + 1);
+        expiration = Math.floor(expireDate.getTime() / 1000);
+        text += ` bis ${bis}`;
+    }
+    try {
+        const csv = await axios.get(CSV_URL);
+        const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        const person = rows.find(r => r[0] === user);
+        if (person) {
+            await axios.post('https://slack.com/api/users.profile.set', { user: person[1].trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
+        }
+        res.redirect('/dashboard');
+    } catch (e) { res.send(errorPage("Update fehlgeschlagen")); }
+});
+
 app.get('/empfang', async (req, res) => {
     try {
         const csv = await axios.get(CSV_URL, { timeout: 8000 });
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         const data = await Promise.all(rows.map(async r => ({ n: r[0], ...(await getFullStatus(r[1])) })));
-        
         let infoText = "";
         try { const infoCsv = await axios.get(INFO_URL, { timeout: 3000 }); infoText = infoCsv.data.split('\n')[0]; } catch (e) {}
-
         const finalData = data.map(p => {
             const isPresent = p.t.toLowerCase().includes("büro") || p.t.toLowerCase().includes("da");
             return isPresent ? p : { ...p, t: "Abwesend", e: "⚪", c: "bg-away", b: "border-away" };
         });
         finalData.sort((a, b) => (a.t === "Abwesend") - (b.t === "Abwesend") || a.n.localeCompare(b.n));
-        
         const infoBox = (infoText && infoText.trim() !== "" && !infoText.startsWith("<!DOCTYPE")) ? `<div class="info-banner">📢 ${infoText}</div>` : "";
         const cards = finalData.map(p => `<div class="card"><img src="${p.p}" class="avatar ${p.b}" onerror="this.src='https://via.placeholder.com/75'"><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
-        
         res.send(`<html>${htmlHead}<body class="empfang-body">${styles}<div class="container"><h1 class="empfang-header">Willkommen bei der Lebenshilfe Heidelberg e.V.</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
-    } catch (e) {
-        console.error("Fehler im Empfang:", e.message);
-        res.send(errorPage(e.message)); // Sende Error-Seite mit Refresh-Logik
-    }
+    } catch (e) { res.send(errorPage(e.message)); }
 });
 
 app.get('/dashboard', async (req, res) => {
@@ -126,17 +148,12 @@ app.get('/dashboard', async (req, res) => {
         const data = await Promise.all(rows.map(async r => ({ n: r[0], id: r[1], ...(await getFullStatus(r[1])) })));
         const nameList = [...data].sort((a, b) => a.n.localeCompare(b.n));
         data.sort((a, b) => a.r - b.r);
-
         const cards = data.map(p => `<div class="card"><a href="https://slack.com/app_redirect?channel=${p.id.trim()}" target="_blank" style="text-decoration:none"><img src="${p.p}" class="avatar ${p.b}"></a><span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
         const userOptions = nameList.map(u => `<option value="${u.n}">${u.n}</option>`).join('');
-        
         const navBar = `<div class="nav-bar"><a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a><a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a><a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn">✉️ Outlook</a><a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a><a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn">⚠️ Server</a></div>`;
-        const footerForm = `<form action="/update" method="get" class="footer-bar"><select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select><select name="status" required><option value="da">🏢 Büro</option><option value="homeoffice">🏡 Home</option><option value="besprechung">🗓️ Termin</option><option value="unterwegs">🚗 Weg</option><option value="weg">🌊 Abwesend</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option></select><input type="time" name="bis"><button type="submit" class="btn-update">OK</button></form>`;
-
+        const footerForm = `<form action="/update" method="get" class="footer-bar" onsubmit="localStorage.setItem('lastUser', document.getElementById('userSelect').value)"><select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select><select name="status" required><option value="da">🏢 Büro</option><option value="homeoffice">🏡 Home</option><option value="besprechung">🗓️ Termin</option><option value="unterwegs">🚗 Weg</option><option value="weg">🌊 Abwesend</option><option value="krank">🤒 Krank</option><option value="urlaub">🌴 Urlaub</option></select><input type="time" name="bis"><button type="submit" class="btn-update">OK</button></form><script>if(localStorage.getItem('lastUser')) document.getElementById('userSelect').value = localStorage.getItem('lastUser');</script>`;
         res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:150px"></div>${footerForm}</body></html>`);
-    } catch (e) {
-        res.send(errorPage(e.message));
-    }
+    } catch (e) { res.send(errorPage(e.message)); }
 });
 
 app.get('/', (req, res) => res.redirect('/dashboard'));
