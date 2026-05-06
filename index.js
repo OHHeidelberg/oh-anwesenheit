@@ -149,7 +149,10 @@ app.get('/empfang', (req, res) => {
 app.get('/dashboard', (req, res) => {
     const data = [...cachedData].sort((a, b) => a.r - b.r || a.n.localeCompare(b.n));
     const cards = data.map(p => `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
-    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}" ${u.n === lastSelectedUser ? "selected" : ""}>${u.n}</option>`).join('');
+    
+    // Alphabetisch sortierte Mitarbeiter für das Dropdown
+    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n))
+        .map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     
     const navBar = `
     <div class="nav-bar">
@@ -161,8 +164,11 @@ app.get('/dashboard', (req, res) => {
     </div>`;
 
     const footer = `
-    <form action="/update" class="footer-bar">
-        <select name="user" required><option value="" disabled ${!lastSelectedUser ? "selected" : ""}>Mitarbeiter</option>${userOptions}</select>
+    <form action="/update" class="footer-bar" id="updateForm">
+        <select name="user" id="userSelect" required>
+            <option value="" disabled selected>Mitarbeiter</option>
+            ${userOptions}
+        </select>
         <select name="status">
             <option value="da">🏢 Büro</option>
             <option value="homeoffice">🏡 Home</option>
@@ -174,7 +180,23 @@ app.get('/dashboard', (req, res) => {
         </select>
         <input type="time" name="bis">
         <button type="submit" class="btn-update">Update</button>
-    </form>`;
+    </form>
+    
+    <script>
+        // Lokales Gedächtnis Script
+        const select = document.getElementById('userSelect');
+        
+        // 1. Beim Laden: Schauen, ob ein Name gespeichert ist
+        const savedUser = localStorage.getItem('selectedMitarbeiter');
+        if (savedUser) {
+            select.value = savedUser;
+        }
+
+        // 2. Beim Ändern: Namen im Browser speichern
+        select.addEventListener('change', () => {
+            localStorage.setItem('selectedMitarbeiter', select.value);
+        });
+    </script>`;
 
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:150px"></div>${footer}</body></html>`);
 });
