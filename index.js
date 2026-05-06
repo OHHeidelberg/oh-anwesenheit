@@ -18,7 +18,12 @@ const htmlHead = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OH Dashboard</title>
     <script>
-        setTimeout(() => window.location.reload(true), 60000);
+        // Sanfterer Reload: Nur wenn die Seite auch wirklich im Fokus ist
+        setInterval(() => {
+            if (!document.hidden) {
+                window.location.href = window.location.pathname + window.location.search;
+            }
+        }, 60000);
     </script>
 </head>`;
 
