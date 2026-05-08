@@ -10,7 +10,6 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 
 let cachedData = [];
 let cachedInfoText = "";
-let lastSelectedUser = ""; 
 
 const htmlHead = `
 <head>
@@ -18,7 +17,6 @@ const htmlHead = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OH Dashboard</title>
     <script>
-        // Sanfterer Reload: Nur wenn die Seite auch wirklich im Fokus ist
         setInterval(() => {
             if (!document.hidden) {
                 window.location.href = window.location.pathname + window.location.search;
@@ -33,8 +31,21 @@ const styles = `
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
   .container { width: 95%; padding: 20px 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; width: 100%; }
-  .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; transition: opacity 0.3s; }
+  .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #3d3d40; display: flex; flex-direction: column; align-items: center; transition: opacity 0.3s; position: relative; }
+  
+  /* Tooltip Styles */
   .avatar-container { width: 80px; height: 80px; margin-bottom: 10px; position: relative; cursor: pointer; text-decoration: none; }
+  .tooltip {
+    visibility: hidden; width: 160px; background-color: #3a3a3c; color: #fff; text-align: left;
+    border-radius: 12px; padding: 10px; position: absolute; z-index: 100; bottom: 110%; left: 50%;
+    transform: translateX(-50%); box-shadow: 0 8px 16px rgba(0,0,0,0.5); font-size: 0.75rem; border: 1px solid #555;
+    opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  .avatar-container:hover .tooltip { visibility: visible; opacity: 1; }
+  .tooltip table { width: 100%; border-collapse: collapse; }
+  .tooltip th { text-align: left; padding-bottom: 4px; border-bottom: 1px solid #555; font-size: 0.8rem; }
+  .today-row { color: var(--accent-blue); font-weight: bold; }
+
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 3px solid #48484a; object-fit: cover; background: #3a3a3c; }
   .avatar-placeholder { 
     width: 80px; height: 80px; border-radius: 50%; border: 3px solid #48484a;
@@ -63,10 +74,36 @@ function renderAvatar(person) {
     const hasPhoto = person.p && person.p.includes('http') && !person.p.includes('placeholder');
     const firstLetter = person.n ? person.n.charAt(0) : '?';
     const borderColor = person.b || 'border-away';
-    const content = hasPhoto 
-        ? `<img src="${person.p}" class="avatar ${borderColor}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-           <div class="avatar-placeholder ${borderColor}" style="display:none;">${firstLetter}</div>`
-        : `<div class="avatar-placeholder ${borderColor}">${firstLetter}</div>`;
+    
+    // Aktueller Wochentag für Tooltip-Highlighting
+    const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    const todayIndex = new Date().getDay();
+    
+    // Tooltip HTML bauen
+    let tooltipRows = "";
+    const weekDays = ["Mo", "Di", "Mi", "Do", "Fr"];
+    weekDays.forEach((day, idx) => {
+        const isToday = days[todayIndex] === day;
+        const start = person.times[day]?.s || "-";
+        const end = person.times[day]?.e || "-";
+        const isFree = person.offDays.includes(day);
+        const timeStr = isFree ? "<i>Frei</i>" : (start === "-" ? "n.a." : `${start} - ${end}`);
+        
+        tooltipRows += `<tr class="${isToday ? 'today-row' : ''}"><td>${day}:</td><td style="text-align:right">${timeStr}</td></tr>`;
+    });
+
+    const content = `
+        ${hasPhoto 
+            ? `<img src="${person.p}" class="avatar ${borderColor}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+               <div class="avatar-placeholder ${borderColor}" style="display:none;">${firstLetter}</div>`
+            : `<div class="avatar-placeholder ${borderColor}">${firstLetter}</div>`
+        }
+        <div class="tooltip">
+            <table>
+                <tr><th colspan="2">Kernarbeitszeiten</th></tr>
+                ${tooltipRows}
+            </table>
+        </div>`;
     
     if (person.id && person.id !== "kein") {
         return `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>`;
@@ -112,9 +149,23 @@ async function updateData() {
     try {
         const csv = await axios.get(CSV_URL, { timeout: 10000 });
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
+        
         const newData = await Promise.all(rows.map(async r => {
             const status = await getFullStatus(r[1], r[0]);
-            return { n: r[0], id: r[1], ...status };
+            return { 
+                n: r[0], 
+                id: r[1], 
+                ...status,
+                // Neue Spalten D-M (Index 3-12) und N (Index 13)
+                times: {
+                    "Mo": { s: r[3], e: r[4] },
+                    "Di": { s: r[5], e: r[6] },
+                    "Mi": { s: r[7], e: r[8] },
+                    "Do": { s: r[9], e: r[10] },
+                    "Fr": { s: r[11], e: r[12] }
+                },
+                offDays: r[13] ? r[13].split(',').map(d => d.trim()) : []
+            };
         }));
         if (newData.length > 0) cachedData = newData;
         const infoCsv = await axios.get(INFO_URL, { timeout: 5000 }).catch(() => null);
@@ -127,25 +178,17 @@ updateData();
 
 app.get('/empfang', (req, res) => {
     const data = [...cachedData];
-    // Sortierung: Büro-Leute nach oben, dann alphabetisch
     data.sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
-    
     const infoBox = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `<div class="info-banner">📢 ${cachedInfoText}</div>` : "";
     
     const cards = data.map(p => {
-        // Empfang-Spezifische Logik: Nur R1 (Büro) wird farbig/echt angezeigt
         const isAtOffice = p.r === 1;
         const statusText = isAtOffice ? p.t : "Abwesend";
         const statusEmoji = isAtOffice ? p.e : "⚪";
         const statusClass = isAtOffice ? p.c : "bg-away";
         const cardOpacity = isAtOffice ? "1.0" : "0.35";
         
-        return `
-        <div class="card" style="opacity:${cardOpacity}">
-            ${renderAvatar(p)}
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${statusClass}">${statusEmoji} ${statusText}</div>
-        </div>`;
+        return `<div class="card" style="opacity:${cardOpacity}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${statusClass}">${statusEmoji} ${statusText}</div></div>`;
     }).join('');
     
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center; font-size:2.5rem;">Willkommen</h1>${infoBox}<div class="grid">${cards}</div></div></body></html>`);
@@ -154,10 +197,7 @@ app.get('/empfang', (req, res) => {
 app.get('/dashboard', (req, res) => {
     const data = [...cachedData].sort((a, b) => a.r - b.r || a.n.localeCompare(b.n));
     const cards = data.map(p => `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
-    
-    // Alphabetisch sortierte Mitarbeiter für das Dropdown
-    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n))
-        .map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     
     const navBar = `
     <div class="nav-bar">
@@ -169,11 +209,8 @@ app.get('/dashboard', (req, res) => {
     </div>`;
 
     const footer = `
-    <form action="/update" class="footer-bar" id="updateForm">
-        <select name="user" id="userSelect" required>
-            <option value="" disabled selected>Mitarbeiter</option>
-            ${userOptions}
-        </select>
+    <form action="/update" class="footer-bar">
+        <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
         <select name="status">
             <option value="da">🏢 Büro</option>
             <option value="homeoffice">🏡 Home</option>
@@ -186,21 +223,11 @@ app.get('/dashboard', (req, res) => {
         <input type="time" name="bis">
         <button type="submit" class="btn-update">Update</button>
     </form>
-    
     <script>
-        // Lokales Gedächtnis Script
         const select = document.getElementById('userSelect');
-        
-        // 1. Beim Laden: Schauen, ob ein Name gespeichert ist
-        const savedUser = localStorage.getItem('selectedMitarbeiter');
-        if (savedUser) {
-            select.value = savedUser;
-        }
-
-        // 2. Beim Ändern: Namen im Browser speichern
-        select.addEventListener('change', () => {
-            localStorage.setItem('selectedMitarbeiter', select.value);
-        });
+        const saved = localStorage.getItem('selectedMitarbeiter');
+        if (saved) select.value = saved;
+        select.addEventListener('change', () => localStorage.setItem('selectedMitarbeiter', select.value));
     </script>`;
 
     res.send(`<html>${htmlHead}<body>${styles}<div class="container"><h1 style="text-align:center">Dashboard</h1>${navBar}<div class="grid">${cards}</div></div><div style="height:150px"></div>${footer}</body></html>`);
@@ -208,18 +235,9 @@ app.get('/dashboard', (req, res) => {
 
 app.get('/update', async (req, res) => {
     const { user, status, bis } = req.query;
-    lastSelectedUser = user;
     const person = cachedData.find(r => r.n === user);
     if (person && person.id && person.id !== "kein") {
-        const map = { 
-            da: ["Im Büro", ":office:"], 
-            homeoffice: ["Homeoffice", ":house_with_garden:"], 
-            besprechung: ["Besprechung", ":calendar:"], 
-            unterwegs: ["Unterwegs", ":car:"], 
-            krank: ["Krank", ":face_with_thermometer:"],
-            urlaub: ["Urlaub", ":palm_tree:"],
-            weg: ["Abwesend", ":wave:"] 
-        };
+        const map = { da: ["Im Büro", ":office:"], homeoffice: ["Homeoffice", ":house_with_garden:"], besprechung: ["Besprechung", ":calendar:"], unterwegs: ["Unterwegs", ":car:"], krank: ["Krank", ":face_with_thermometer:"], urlaub: ["Urlaub", ":palm_tree:"], weg: ["Abwesend", ":wave:"] };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
         
@@ -228,26 +246,14 @@ app.get('/update', async (req, res) => {
             const nowInBerlin = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
             let targetDate = new Date(nowInBerlin);
             targetDate.setHours(parseInt(h), parseInt(m), 0, 0);
-            
-            if (targetDate < nowInBerlin) {
-                targetDate.setDate(targetDate.getDate() + 1);
-            }
-            
+            if (targetDate < nowInBerlin) targetDate.setDate(targetDate.getDate() + 1);
             const secondsDiff = Math.floor((targetDate.getTime() - nowInBerlin.getTime()) / 1000);
             expiration = Math.floor(Date.now() / 1000) + secondsDiff;
             text += ` bis ${bis}`;
         }
 
         try {
-            await axios.post('https://slack.com/api/users.profile.set', { 
-                user: person.id.trim(), 
-                profile: { 
-                    status_text: text, 
-                    status_emoji: emoji, 
-                    status_expiration: expiration 
-                } 
-            }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
-            
+            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } });
             await updateData();
         } catch (e) { console.error("Slack Update Error"); }
     }
