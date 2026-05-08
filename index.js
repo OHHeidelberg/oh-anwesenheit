@@ -179,20 +179,20 @@ app.get('/dashboard', (req, res) => {
             </div>
             <div class="grid">${cards}</div>
         </div>
-        <form action="/update" class="footer-bar">
-            <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
-            <select name="status">
-                <option value="da">🏢 Büro</option>
-                <option value="homeoffice">🏡 Home</option>
-                <option value="besprechung">🗓️ Besprechung</option>
-                <option value="pause">🥪 Pause</option>
-                <option value="unterwegs">🚗 Unterwegs</option>
-                <option value="krank">🤒 Krank</option>
-                <option value="urlaub">🌴 Urlaub</option>
-                <option value="weg">🌊 Abwesend</option>
-            </select>
-            <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
-        </form>
+<form action="/update" class="footer-bar">
+    <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
+    <select name="status">
+        <option value="da">🏢 Büro</option>
+        <option value="homeoffice">🏡 Homeoffice</option>
+        <option value="besprechung">🗓️ Besprechung</option>
+        <option value="pause">🥪 Pause</option>
+        <option value="unterwegs">🚗 Unterwegs</option>
+        <option value="krank">🤒 Krank</option>
+        <option value="urlaub">🌴 Urlaub</option>
+        <option value="weg">🌊 Abwesend</option>
+    </select>
+    <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
+</form>
         <script>
             const sel = document.getElementById('userSelect');
             const saved = localStorage.getItem('selectedMitarbeiter');
