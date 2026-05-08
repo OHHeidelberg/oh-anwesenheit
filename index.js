@@ -10,7 +10,7 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 
 let cachedData = [];
 let cachedInfoText = "";
-let pauseStorage = {}; // Speicher für Status vor der Pause
+let pauseStorage = {}; 
 
 const htmlHead = `
 <head>
@@ -111,12 +111,13 @@ async function getFullStatus(id) {
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", p: prof.image_192, r: 8 };
+        
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
-        else if (lowTxt.includes("pause")) { res.c="bg-away"; res.r=9; res.e="🥪"; }
+        else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; } // Hier auf Gelb gesetzt
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
         return res;
@@ -136,7 +137,6 @@ async function updateData() {
     } catch (e) {}
 }
 
-// Überprüfung für Pausen-Wiederherstellung (jede Minute)
 setInterval(async () => {
     const now = Math.floor(Date.now() / 1000);
     for (let userId in pauseStorage) {
@@ -149,7 +149,7 @@ setInterval(async () => {
                 );
                 delete pauseStorage[userId];
                 await updateData();
-            } catch (e) { console.log("Restore failed for " + userId); }
+            } catch (e) {}
         }
     }
 }, 60000);
@@ -210,7 +210,6 @@ app.get('/update', async (req, res) => {
             if (target < berlin) target.setDate(target.getDate() + 1);
             expiration = Math.floor(Date.now() / 1000) + Math.floor((target - berlin) / 1000);
             
-            // Wenn Pause: Alten Status merken
             if (status === 'pause') {
                 try {
                     const currentProfile = await axios.get(`https://slack.com/api/users.profile.get?user=${person.id.trim()}`, { headers: h });
@@ -219,7 +218,7 @@ app.get('/update', async (req, res) => {
                         emoji: currentProfile.data.profile.status_emoji || "",
                         expires: expiration
                     };
-                } catch (e) { console.log("Could not save old status"); }
+                } catch (e) {}
             }
             text += ` bis ${bis}`;
         }
