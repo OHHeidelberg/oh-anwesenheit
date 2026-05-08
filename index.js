@@ -117,7 +117,7 @@ async function getFullStatus(id) {
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
-        else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; } // Hier auf Gelb gesetzt
+        else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
         return res;
@@ -137,6 +137,7 @@ async function updateData() {
     } catch (e) {}
 }
 
+// Überprüfung für Pausen-Wiederherstellung (jede Minute)
 setInterval(async () => {
     const now = Math.floor(Date.now() / 1000);
     for (let userId in pauseStorage) {
@@ -144,7 +145,14 @@ setInterval(async () => {
             const old = pauseStorage[userId];
             try {
                 await axios.post('https://slack.com/api/users.profile.set', 
-                    { user: userId, profile: { status_text: old.text, status_emoji: old.emoji } }, 
+                    { 
+                        user: userId, 
+                        profile: { 
+                            status_text: old.text, 
+                            status_emoji: old.emoji,
+                            status_expiration: old.oldExpiration 
+                        } 
+                    }, 
                     { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } }
                 );
                 delete pauseStorage[userId];
@@ -216,6 +224,7 @@ app.get('/update', async (req, res) => {
                     pauseStorage[person.id.trim()] = {
                         text: currentProfile.data.profile.status_text || "",
                         emoji: currentProfile.data.profile.status_emoji || "",
+                        oldExpiration: currentProfile.data.profile.status_expiration || 0,
                         expires: expiration
                     };
                 } catch (e) {}
