@@ -17,14 +17,35 @@ const htmlHead = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OH Dashboard</title>
     <script>
+        async function checkAndReload() {
+            // 1. Prüfen, ob der Browser überhaupt denkt, er sei online
+            if (!navigator.onLine) {
+                console.log("Offline: Warte auf Verbindung...");
+                return;
+            }
+
+            try {
+                // 2. Kleiner "Ping" an den Server, um zu sehen, ob er antwortet
+                const response = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+                if (response.ok) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                console.log("Server nicht erreichbar, Reload verschoben.");
+            }
+        }
+
+        // Alle 60 Sekunden prüfen
         setInterval(() => {
             if (!document.hidden) {
-                window.location.href = window.location.pathname + window.location.search;
+                checkAndReload();
             }
         }, 60000);
+
+        // Falls die Verbindung wiederkommt, sofort versuchen zu laden
+        window.addEventListener('online', checkAndReload);
     </script>
 </head>`;
-
 const styles = `
 <style>
   :root { --bg-color: #000; --card-bg: #2c2c2e; --text-color: #fff; --accent-blue: #007aff; }
