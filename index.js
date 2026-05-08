@@ -17,11 +17,18 @@ const htmlHead = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OH Dashboard</title>
     <script>
-        // 1. Dark/Light Mode Logik (sofort ausführen)
+        // Theme-Logik: Standardmäßig Dark Mode für /empfang
         (function() {
             const savedTheme = localStorage.getItem('theme');
-            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+            const isEmpfang = window.location.pathname.includes('/empfang');
+            
+            // Wenn nichts gespeichert ist und wir auf /empfang sind -> Dark Mode
+            // Ansonsten nach gespeicherten Werten oder System-Präferenz gehen
+            if (savedTheme === 'dark' || (isEmpfang && !savedTheme)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else if (savedTheme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
                 document.documentElement.setAttribute('data-theme', 'dark');
             }
         })();
@@ -33,21 +40,14 @@ const htmlHead = `
             localStorage.setItem('theme', next);
         }
 
-        // 2. Kiosk-Schutz: Nur neu laden, wenn online und Server erreichbar
         async function checkAndReload() {
             if (!navigator.onLine) return;
             try {
                 const response = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
                 if (response.ok) window.location.reload();
-            } catch (e) {
-                console.log("Reload abgebrochen: Server/Internet nicht bereit.");
-            }
+            } catch (e) {}
         }
-
-        setInterval(() => {
-            if (!document.hidden) checkAndReload();
-        }, 60000);
-
+        setInterval(() => { if (!document.hidden) checkAndReload(); }, 60000);
         window.addEventListener('online', checkAndReload);
     </script>
 </head>`;
