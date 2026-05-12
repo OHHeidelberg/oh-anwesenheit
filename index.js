@@ -118,7 +118,7 @@ async function getFullStatus(id) {
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
-        else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; } // Neu: Uni Status
+        else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; }
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
         return res;
@@ -138,11 +138,12 @@ async function updateData() {
     } catch (e) {}
 }
 
+// Intervall für Pause & Nacht-Reset (23:30 Uhr)
 setInterval(async () => {
     const nowObj = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
     const now = Math.floor(Date.now() / 1000);
     
-    // 1. Pausen-Wiederherstellung
+    // 1. Pausen-Wiederherstellung (inkl. Expiration)
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
             const old = pauseStorage[userId];
@@ -172,7 +173,7 @@ setInterval(async () => {
                 }
             }
         }
-        pauseStorage = {};
+        pauseStorage = {}; 
         await updateData();
     }
 }, 60000);
@@ -190,7 +191,7 @@ app.get('/dashboard', (req, res) => {
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
                 <a href="https://mail.hd-werkstaetten.de/owa/" target="_blank" class="nav-btn">✉️ Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
-                <a href="https://status.render.com/" target="_blank" class="nav-btn">⚠️ Serverprobleme</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn">⚠️ Serverprobleme</a>
             </div>
             <div class="grid">${cards}</div>
         </div>
