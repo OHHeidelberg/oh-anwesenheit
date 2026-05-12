@@ -118,6 +118,7 @@ async function getFullStatus(id) {
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
+        else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; } // Neu: Uni Status
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
         return res;
@@ -137,28 +138,42 @@ async function updateData() {
     } catch (e) {}
 }
 
-// Überprüfung für Pausen-Wiederherstellung (jede Minute)
 setInterval(async () => {
+    const nowObj = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
     const now = Math.floor(Date.now() / 1000);
+    
+    // 1. Pausen-Wiederherstellung
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
             const old = pauseStorage[userId];
             try {
                 await axios.post('https://slack.com/api/users.profile.set', 
-                    { 
-                        user: userId, 
-                        profile: { 
-                            status_text: old.text, 
-                            status_emoji: old.emoji,
-                            status_expiration: old.oldExpiration 
-                        } 
-                    }, 
+                    { user: userId, profile: { status_text: old.text, status_emoji: old.emoji, status_expiration: old.oldExpiration } }, 
                     { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } }
                 );
                 delete pauseStorage[userId];
                 await updateData();
             } catch (e) {}
         }
+    }
+
+    // 2. Nacht-Reset um 23:30 Uhr
+    if (nowObj.getHours() === 23 && nowObj.getMinutes() === 30) {
+        for (const person of cachedData) {
+            if (person.id && person.id !== "kein") {
+                const lowT = (person.t || "").toLowerCase();
+                if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
+                    try {
+                        await axios.post('https://slack.com/api/users.profile.set', 
+                            { user: person.id.trim(), profile: { status_text: "Abwesend", status_emoji: ":wave:", status_expiration: 0 } }, 
+                            { headers: { Authorization: `Bearer ${SLACK_TOKEN}` } }
+                        );
+                    } catch (e) {}
+                }
+            }
+        }
+        pauseStorage = {};
+        await updateData();
     }
 }, 60000);
 
@@ -179,20 +194,21 @@ app.get('/dashboard', (req, res) => {
             </div>
             <div class="grid">${cards}</div>
         </div>
-<form action="/update" class="footer-bar">
-    <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
-    <select name="status">
-        <option value="da">🏢 Büro</option>
-        <option value="homeoffice">🏡 Homeoffice</option>
-        <option value="besprechung">🗓️ Besprechung</option>
-        <option value="pause">🥪 Pause</option>
-        <option value="unterwegs">🚗 Unterwegs</option>
-        <option value="krank">🤒 Krank</option>
-        <option value="urlaub">🌴 Urlaub</option>
-        <option value="weg">🌊 Abwesend</option>
-    </select>
-    <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
-</form>
+        <form action="/update" class="footer-bar">
+            <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
+            <select name="status">
+                <option value="da">🏢 Büro</option>
+                <option value="homeoffice">🏡 Homeoffice</option>
+                <option value="besprechung">🗓️ Besprechung</option>
+                <option value="pause">🥪 Pause</option>
+                <option value="uni">🎓 Uni</option>
+                <option value="unterwegs">🚗 Unterwegs</option>
+                <option value="krank">🤒 Krank</option>
+                <option value="urlaub">🌴 Urlaub</option>
+                <option value="weg">🌊 Abwesend</option>
+            </select>
+            <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
+        </form>
         <script>
             const sel = document.getElementById('userSelect');
             const saved = localStorage.getItem('selectedMitarbeiter');
@@ -206,7 +222,17 @@ app.get('/update', async (req, res) => {
     const person = cachedData.find(r => r.n === user);
     if (person?.id && person.id !== "kein") {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
-        const map = { da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], besprechung:["Besprechung",":calendar:"], pause:["Pause",":sandwich:"], unterwegs:["Unterwegs",":car:"], krank:["Krank",":face_with_thermometer:"], urlaub:["Urlaub",":palm_tree:"], weg:["Abwesend",":wave:"] };
+        const map = { 
+            da:["Im Büro",":office:"], 
+            homeoffice:["Homeoffice",":house_with_garden:"], 
+            besprechung:["Besprechung",":calendar:"], 
+            pause:["Pause",":sandwich:"], 
+            uni:["Uni",":mortar_board:"],
+            unterwegs:["Unterwegs",":car:"], 
+            krank:["Krank",":face_with_thermometer:"], 
+            urlaub:["Urlaub",":palm_tree:"], 
+            weg:["Abwesend",":wave:"] 
+        };
         
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
