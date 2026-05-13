@@ -61,36 +61,38 @@ const styles = `
   :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; }
   [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; }
   
-  html, body { min-height: 100vh; margin: 0; padding: 0; }
+  html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; padding: 1vh 1vw; box-sizing: border-box; }
 
-  .container { flex: 1; display: flex; flex-direction: column; gap: 1vh; }
+  .container { flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 1vh; }
 
-  /* Grid erlaubt jetzt vertikales Scrollen, falls nötig */
   .grid { 
     flex: 1; display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
-    grid-auto-rows: minmax(160px, auto); gap: 10px; width: 100%; 
+    grid-template-columns: repeat(auto-fill, minmax(14vw, 1fr)); 
+    grid-auto-rows: 1fr; gap: 10px; width: 100%; overflow-y: auto; 
+    padding-right: 5px;
   }
+
+  .grid::-webkit-scrollbar { width: 6px; }
+  .grid::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
 
   .card { 
     background: var(--card-bg); padding: 10px; border-radius: 12px; border: 1px solid var(--border-color);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0;
     position: relative;
   }
 
-  .avatar-container { height: 60px; width: 60px; margin-bottom: 8px; text-decoration: none; position: relative; }
+  .avatar-container { height: 45%; aspect-ratio: 1/1; margin-bottom: 8px; text-decoration: none; position: relative; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); object-fit: cover; background: #8e8e93; }
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
   
-  .name-label { font-weight: bold; font-size: 1rem; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
+  .name-label { font-weight: bold; font-size: clamp(0.9rem, 1.1vw, 1.2rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
 
   .status-badge { 
-    padding: 5px 8px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; width: 90%; 
+    padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.85vw, 0.95rem); font-weight: 700; width: 90%; 
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; cursor: help; position: relative;
   }
 
-  /* Tooltip Logik */
   .status-badge:hover::after {
     content: attr(data-worktimes);
     position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
@@ -107,26 +109,27 @@ const styles = `
   .nav-bar { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 5px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 8px 14px; border-radius: 15px; font-size: 0.85rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
-  .footer-bar { background: var(--card-bg); margin-top: 10px; padding: 15px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
+  .footer-bar { height: 8vh; min-height: 60px; background: var(--card-bg); margin-top: 5px; padding: 0 15px; display: flex; justify-content: center; align-items: center; gap: 10px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
   
   select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 8px; border-radius: 8px; font-size: 0.95rem; }
   .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; padding: 8px 16px; }
 
-  .info-banner-container { display: flex; align-items: center; gap: 10px; min-height: 50px; margin-bottom: 10px; }
-  .info-banner { flex: 1; padding: 10px; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.2rem; font-weight: bold; text-align: center; }
+  .info-banner-container { display: flex; align-items: center; gap: 10px; height: 7vh; flex-shrink: 0; }
+  .info-banner { flex: 1; height: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.4rem; font-weight: bold; }
 
-  /* Optimierung für Mobile */
-  @media (max-width: 600px) {
-    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-    .footer-bar { flex-direction: column; align-items: stretch; }
-    .status-badge:hover::after { left: 0; transform: none; width: 100%; box-sizing: border-box; }
+  @media (max-width: 800px) {
+    html, body { overflow: auto; height: auto; }
+    .container { overflow: visible; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); grid-auto-rows: 160px; overflow: visible; }
+    .footer-bar { height: auto; padding: 15px; flex-direction: column; align-items: stretch; }
+    .avatar-container { height: 60px; }
   }
 </style>`;
 
 function getWorkTimeList(person) {
     const daysArr = ["Mo", "Di", "Mi", "Do", "Fr"];
     const berlinTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"});
-    const todayNum = new Date(berlinTime).getDay(); // So=0, Mo=1...
+    const todayNum = new Date(berlinTime).getDay();
     const today = daysArr[todayNum - 1]; 
     
     return daysArr.map(d => {
