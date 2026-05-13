@@ -122,7 +122,6 @@ async function getFullStatus(id) {
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", p: prof.image_192, r: 8 };
-        
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
@@ -204,6 +203,8 @@ app.get('/dashboard', (req, res) => {
                     <option value="da">🏢 Büro</option>
                     <option value="homeoffice">🏡 Homeoffice</option>
                     <option value="besprechung">🗓️ Besprechung</option>
+                    <option value="unterwegs">🚗 Unterwegs</option>
+                    <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
                     <option value="weg">🌊 Abwesend</option>
                 </select>
@@ -223,7 +224,15 @@ app.get('/update', async (req, res) => {
     const person = cachedData.find(r => r.n === user);
     if (person?.id && person.id !== "kein") {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
-        const map = { da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], besprechung:["Besprechung",":calendar:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"] };
+        const map = { 
+            da:["Im Büro",":office:"], 
+            homeoffice:["Homeoffice",":house_with_garden:"], 
+            besprechung:["Besprechung",":calendar:"], 
+            unterwegs:["Unterwegs",":car:"], 
+            uni:["Uni",":mortar_board:"], 
+            pause:["Pause",":sandwich:"], 
+            weg:["Abwesend",":wave:"] 
+        };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
         if (bis) {
