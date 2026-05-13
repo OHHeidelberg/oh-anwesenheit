@@ -84,16 +84,24 @@ const styles = `
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
   
   .name-label { font-weight: bold; font-size: clamp(0.9rem, 1.2vw, 1.3rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
-  .status-badge { padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.9vw, 1rem); font-weight: 700; width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; cursor: help; }
+
+  /* Verbesserte Tooltip-Logik via CSS */
+  .status-badge { 
+    padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.9vw, 1rem); font-weight: 700; width: 90%; 
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; cursor: help; position: relative;
+  }
+  .status-badge:hover::after {
+    content: attr(title);
+    position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
+    background: #333; color: #fff; padding: 5px 10px; border-radius: 6px;
+    font-size: 0.8rem; white-space: nowrap; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
   .bg-red { background: rgba(255, 69, 58, 0.2); color: #ff453a; }
   .bg-away { background: var(--nav-btn-bg); color: #8e8e93; }
 
-  .info-banner-container { display: flex; align-items: center; gap: 10px; height: 7vh; flex-shrink: 0; }
-  .info-banner { flex: 1; height: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.4rem; font-weight: bold; }
-  
   .nav-bar { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 5px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 8px 14px; border-radius: 15px; font-size: 0.85rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
