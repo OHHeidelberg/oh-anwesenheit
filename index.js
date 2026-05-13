@@ -61,40 +61,42 @@ const styles = `
   :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; }
   [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; }
   
-  html, body { height: 100vh; overflow: hidden; margin: 0; padding: 0; scrollbar-width: none; }
-  body::-webkit-scrollbar { display: none; }
+  html, body { min-height: 100vh; margin: 0; padding: 0; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; padding: 1vh 1vw; box-sizing: border-box; }
 
-  .container { flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 1vh; }
+  .container { flex: 1; display: flex; flex-direction: column; gap: 1vh; }
 
+  /* Grid erlaubt jetzt vertikales Scrollen, falls nötig */
   .grid { 
     flex: 1; display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(14vw, 1fr)); 
-    grid-auto-rows: 1fr; gap: 10px; width: 100%; overflow: hidden; 
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+    grid-auto-rows: minmax(160px, auto); gap: 10px; width: 100%; 
   }
 
   .card { 
     background: var(--card-bg); padding: 10px; border-radius: 12px; border: 1px solid var(--border-color);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     position: relative;
   }
 
-  .avatar-container { height: 40%; aspect-ratio: 1/1; margin-bottom: 8px; text-decoration: none; position: relative; }
+  .avatar-container { height: 60px; width: 60px; margin-bottom: 8px; text-decoration: none; position: relative; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); object-fit: cover; background: #8e8e93; }
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
   
-  .name-label { font-weight: bold; font-size: clamp(0.9rem, 1.2vw, 1.3rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
+  .name-label { font-weight: bold; font-size: 1rem; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
 
-  /* Verbesserte Tooltip-Logik via CSS */
   .status-badge { 
-    padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.9vw, 1rem); font-weight: 700; width: 90%; 
+    padding: 5px 8px; border-radius: 10px; font-size: 0.85rem; font-weight: 700; width: 90%; 
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; cursor: help; position: relative;
   }
+
+  /* Tooltip Logik */
   .status-badge:hover::after {
-    content: attr(title);
+    content: attr(data-worktimes);
     position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
-    background: #333; color: #fff; padding: 5px 10px; border-radius: 6px;
-    font-size: 0.8rem; white-space: nowrap; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    background: #333; color: #fff; padding: 10px; border-radius: 8px;
+    font-size: 0.8rem; white-space: pre-wrap; z-index: 100; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    width: max-content; text-align: left; line-height: 1.4;
   }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
@@ -105,19 +107,36 @@ const styles = `
   .nav-bar { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 5px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 8px 14px; border-radius: 15px; font-size: 0.85rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
-  .footer-bar { height: 8vh; background: var(--card-bg); margin-top: 5px; padding: 0 15px; display: flex; justify-content: center; align-items: center; gap: 10px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
+  .footer-bar { background: var(--card-bg); margin-top: 10px; padding: 15px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
   
   select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 8px; border-radius: 8px; font-size: 0.95rem; }
   .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; padding: 8px 16px; }
+
+  .info-banner-container { display: flex; align-items: center; gap: 10px; min-height: 50px; margin-bottom: 10px; }
+  .info-banner { flex: 1; padding: 10px; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.2rem; font-weight: bold; text-align: center; }
+
+  /* Optimierung für Mobile */
+  @media (max-width: 600px) {
+    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    .footer-bar { flex-direction: column; align-items: stretch; }
+    .status-badge:hover::after { left: 0; transform: none; width: 100%; box-sizing: border-box; }
+  }
 </style>`;
 
-function getWorkTimeToday(person) {
-    const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-    const today = days[new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"})).getDay()];
-    if (person.offDays && person.offDays.includes(today)) return "Frei";
-    const t = person.times && person.times[today];
-    if (t && t.s && t.e) return `${t.s} - ${t.e}`;
-    return "Keine Zeit hinterlegt";
+function getWorkTimeList(person) {
+    const daysArr = ["Mo", "Di", "Mi", "Do", "Fr"];
+    const berlinTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"});
+    const todayNum = new Date(berlinTime).getDay(); // So=0, Mo=1...
+    const today = daysArr[todayNum - 1]; 
+    
+    return daysArr.map(d => {
+        let timeStr = "Frei";
+        if (!person.offDays?.includes(d)) {
+            const t = person.times?.[d];
+            timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
+        }
+        return (d === today) ? `▶ ${d}: ${timeStr} ◀` : `  ${d}: ${timeStr}`;
+    }).join('\n');
 }
 
 function renderAvatar(person) {
@@ -170,44 +189,13 @@ async function updateData() {
     } catch (e) {}
 }
 
-setInterval(async () => {
-    const nowObj = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
-    const now = Math.floor(Date.now() / 1000);
-    const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
-
-    for (let userId in pauseStorage) {
-        if (now >= pauseStorage[userId].expires) {
-            const old = pauseStorage[userId];
-            try {
-                await axios.post('https://slack.com/api/users.profile.set', { user: userId, profile: { status_text: old.text, status_emoji: old.emoji, status_expiration: old.oldExpiration } }, { headers: h });
-                delete pauseStorage[userId];
-                await updateData();
-            } catch (e) {}
-        }
-    }
-    if (nowObj.getHours() === 23 && nowObj.getMinutes() === 30) {
-        for (const person of cachedData) {
-            if (person.id && person.id !== "kein") {
-                const lowT = (person.t || "").toLowerCase();
-                if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
-                    try {
-                        await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: "Abwesend", status_emoji: ":wave:", status_expiration: 0 } }, { headers: h });
-                    } catch (e) {}
-                }
-            }
-        }
-        pauseStorage = {}; 
-        await updateData();
-    }
-}, 60000);
-
 setInterval(updateData, 120000); updateData();
 
 app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
-        const wt = getWorkTimeToday(p);
-        return `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}" title="Kernzeit heute: ${wt}">${p.e} ${p.t}</div></div>`;
+        const wtList = getWorkTimeList(p);
+        return `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}" data-worktimes="Kernarbeitszeiten:\n${wtList}">${p.e} ${p.t}</div></div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
@@ -262,16 +250,10 @@ app.get('/update', async (req, res) => {
             let target = new Date(berlin); target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             if (target < berlin) target.setDate(target.getDate() + 1);
             expiration = Math.floor(Date.now() / 1000) + Math.floor((target - berlin) / 1000);
-            if (status === 'pause') {
-                try {
-                    const prof = await axios.get(`https://slack.com/api/users.profile.get?user=${person.id.trim()}`, { headers: h });
-                    pauseStorage[person.id.trim()] = { text: prof.data.profile.status_text || "", emoji: prof.data.profile.status_emoji || "", oldExpiration: prof.data.profile.status_expiration || 0, expires: expiration };
-                } catch (e) {}
-            }
             text += ` bis ${bis}`;
         }
         try {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: status === 'pause' ? 0 : expiration } }, { headers: h });
+            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
             await updateData();
         } catch (e) {}
     }
@@ -283,8 +265,8 @@ app.get('/empfang', (req, res) => {
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
         const atOffice = p.r === 1;
-        const wt = getWorkTimeToday(p);
-        return `<div class="card" style="opacity:${atOffice ? 1 : 0.3}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${atOffice ? p.c : 'bg-away'}" title="Kernzeit heute: ${wt}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div></div>`;
+        const wtList = getWorkTimeList(p);
+        return `<div class="card" style="opacity:${atOffice ? 1 : 0.3}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${atOffice ? p.c : 'bg-away'}" data-worktimes="Kernarbeitszeiten:\n${wtList}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div></div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
