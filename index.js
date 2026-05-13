@@ -88,12 +88,11 @@ const styles = `
     gap: 1vh;
   }
 
-  /* Dynamisches Grid, das den Platz füllt */
   .grid { 
     flex: 1;
     display: grid; 
     grid-template-columns: repeat(auto-fill, minmax(14vw, 1fr)); 
-    grid-auto-rows: 1fr; /* Karten teilen sich die verfügbare Höhe */
+    grid-auto-rows: 1fr; 
     gap: 10px; 
     width: 100%;
     overflow: hidden;
@@ -109,21 +108,21 @@ const styles = `
     flex-direction: column; 
     align-items: center; 
     justify-content: center;
-    min-height: 0; /* Verhindert das Aufblähen */
+    min-height: 0;
   }
 
   .avatar-container { 
-    height: 35%; /* Prozentual zur Kartengröße */
+    height: 38%; 
     aspect-ratio: 1/1;
-    margin-bottom: 5px; 
+    margin-bottom: 8px; 
     position: relative; 
     text-decoration: none; 
   }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); object-fit: cover; }
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
   
-  .name-label { font-weight: bold; font-size: clamp(0.8rem, 1.2vw, 1.2rem); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; }
-  .status-badge { padding: 4px 6px; border-radius: 8px; font-size: clamp(0.7rem, 0.9vw, 1rem); font-weight: 700; width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name-label { font-weight: bold; font-size: clamp(0.9rem, 1.3vw, 1.3rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; }
+  .status-badge { padding: 5px 8px; border-radius: 10px; font-size: clamp(0.75rem, 1vw, 1.1rem); font-weight: 700; width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
@@ -148,27 +147,28 @@ const styles = `
     border-radius: 12px; 
     font-size: 1.5rem; 
     font-weight: bold; 
+    padding: 0 15px;
   }
   
-  .nav-bar { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; }
-  .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 6px 12px; border-radius: 15px; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
+  .nav-bar { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 5px; }
+  .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 8px 14px; border-radius: 15px; font-size: 0.85rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
   .footer-bar { 
     height: 8vh;
     background: var(--card-bg); 
-    margin-top: 1vh;
-    padding: 0 10px;
+    margin-top: 5px;
+    padding: 0 15px;
     display: flex; 
     justify-content: center; 
     align-items: center; 
-    gap: 8px; 
+    gap: 10px; 
     border-radius: 12px;
     border: 1px solid var(--border-color); 
     flex-shrink: 0;
   }
   
-  select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; font-size: 0.9rem; }
-  .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; }
+  select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; font-size: 1rem; }
+  .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; padding: 10px 20px; }
 </style>`;
 
 function renderAvatar(person) {
@@ -191,7 +191,6 @@ async function getFullStatus(id) {
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
         let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", p: prof.image_192, r: 8 };
-        
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
@@ -287,7 +286,7 @@ app.get('/empfang', (req, res) => {
         <div class="container">
             <div class="info-banner-container">
                 <div class="info-banner">${infoText}</div>
-                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px;" onclick="toggleTheme()">🌓</button>
+                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px; font-size: 1.2rem;" onclick="toggleTheme()">🌓 Theme</button>
             </div>
             <div class="grid">${cards}</div>
         </div></body></html>`);
