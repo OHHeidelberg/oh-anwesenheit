@@ -18,7 +18,6 @@ const htmlHead = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OH Dashboard</title>
     <script>
-        // Theme & Auto-Reload Logik
         (function() {
             const savedTheme = localStorage.getItem('theme');
             const isEmpfang = window.location.pathname.includes('/empfang');
@@ -31,10 +30,8 @@ const htmlHead = `
             }
         })();
 
-        // EINBRENSCHUTZ (Pixel-Shift)
-        // Verschiebt den Inhalt alle 5 Minuten minimal, um OLED/LCD Memory-Effekte zu verhindern
         function applyBurnInProtection() {
-            const shiftX = Math.floor(Math.random() * 5) - 2; // -2 bis +2 Pixel
+            const shiftX = Math.floor(Math.random() * 5) - 2;
             const shiftY = Math.floor(Math.random() * 5) - 2;
             document.body.style.transform = "translate(" + shiftX + "px, " + shiftY + "px)";
         }
@@ -64,8 +61,8 @@ const styles = `
   :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; }
   [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; transition: background 0.3s, color 0.3s, transform 0.5s ease-in-out; min-height: 100vh; overflow-x: hidden; }
-  .header-container { display: flex; align-items: center; justify-content: center; position: relative; width: 100%; padding: 20px 0; }
-  .theme-toggle { position: absolute; right: 20px; top: 25px; background: var(--nav-btn-bg); border: 1px solid var(--border-color); color: var(--text-color); padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; }
+  .header-container { display: flex; align-items: center; justify-content: center; position: relative; width: 100%; padding: 15px 0; min-height: 40px; }
+  .theme-toggle { position: absolute; right: 20px; top: 15px; background: var(--nav-btn-bg); border: 1px solid var(--border-color); color: var(--text-color); padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 1.2rem; z-index: 10; }
   .container { width: 95%; margin: 0 auto; padding-bottom: 120px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; width: 100%; }
   .card { background: var(--card-bg); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; position: relative; }
@@ -148,12 +145,10 @@ async function updateData() {
     } catch (e) {}
 }
 
-// Zeit-Routine (Pausen-Ende & Nacht-Reset)
 setInterval(async () => {
     const nowObj = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
     const now = Math.floor(Date.now() / 1000);
     
-    // 1. Pausen-Reset
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
             const old = pauseStorage[userId];
@@ -168,7 +163,6 @@ setInterval(async () => {
         }
     }
 
-    // 2. Nacht-Reset (23:30 Uhr)
     if (nowObj.getHours() === 23 && nowObj.getMinutes() === 30) {
         for (const person of cachedData) {
             if (person.id && person.id !== "kein") {
@@ -194,7 +188,7 @@ app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
     res.send(`<html>${htmlHead}<body>${styles}
-        <div class="header-container"><h1>Dashboard</h1><button class="theme-toggle" onclick="toggleTheme()">🌓</button></div>
+        <div class="header-container"><button class="theme-toggle" onclick="toggleTheme()">🌓</button></div>
         <div class="container">
             <div class="nav-bar">
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
@@ -288,7 +282,7 @@ app.get('/empfang', (req, res) => {
         return `<div class="card" style="opacity:${atOffice ? 1 : 0.35}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div></div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
-        <div class="header-container"><h1>Willkommen</h1><button class="theme-toggle" onclick="toggleTheme()">🌓</button></div>
+        <div class="header-container"><button class="theme-toggle" onclick="toggleTheme()">🌓</button></div>
         <div class="container">${infoBox}<div class="grid">${cards}</div></div></body></html>`);
 });
 
