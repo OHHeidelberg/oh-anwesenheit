@@ -76,6 +76,7 @@ const styles = `
   .card { 
     background: var(--card-bg); padding: 10px; border-radius: 12px; border: 1px solid var(--border-color);
     display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0;
+    position: relative;
   }
 
   .avatar-container { height: 40%; aspect-ratio: 1/1; margin-bottom: 8px; text-decoration: none; position: relative; }
@@ -83,7 +84,7 @@ const styles = `
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
   
   .name-label { font-weight: bold; font-size: clamp(0.9rem, 1.2vw, 1.3rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
-  .status-badge { padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.9vw, 1rem); font-weight: 700; width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .status-badge { padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.9vw, 1rem); font-weight: 700; width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; cursor: help; }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
@@ -101,6 +102,15 @@ const styles = `
   select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 8px; border-radius: 8px; font-size: 0.95rem; }
   .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; padding: 8px 16px; }
 </style>`;
+
+function getWorkTimeToday(person) {
+    const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    const today = days[new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"})).getDay()];
+    if (person.offDays && person.offDays.includes(today)) return "Frei";
+    const t = person.times && person.times[today];
+    if (t && t.s && t.e) return `${t.s} - ${t.e}`;
+    return "Keine Zeit hinterlegt";
+}
 
 function renderAvatar(person) {
     const hasPhoto = person.p && person.p.includes('http') && !person.p.includes('placeholder');
@@ -187,7 +197,10 @@ setInterval(updateData, 120000); updateData();
 
 app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
-    const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}">${p.e} ${p.t}</div></div>`).join('');
+    const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
+        const wt = getWorkTimeToday(p);
+        return `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}" title="Kernzeit heute: ${wt}">${p.e} ${p.t}</div></div>`;
+    }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="nav-bar">
@@ -262,7 +275,8 @@ app.get('/empfang', (req, res) => {
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
         const atOffice = p.r === 1;
-        return `<div class="card" style="opacity:${atOffice ? 1 : 0.3}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div></div>`;
+        const wt = getWorkTimeToday(p);
+        return `<div class="card" style="opacity:${atOffice ? 1 : 0.3}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${atOffice ? p.c : 'bg-away'}" title="Kernzeit heute: ${wt}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div></div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
