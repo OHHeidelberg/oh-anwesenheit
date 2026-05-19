@@ -314,4 +314,42 @@ app.get('/update', async (req, res) => {
             const berlin = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
             let target = new Date(berlin); target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             if (target < berlin) target.setDate(target.getDate() + 1);
-            expiration = Math.floor(Date.now() / 1000
+            expiration = Math.floor(Date.now() / 1000) + Math.floor((target - berlin) / 1000);
+            text += ` bis ${bis}`;
+        }
+        try {
+            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
+            await updateData();
+        } catch (e) {}
+    }
+    res.redirect('/dashboard');
+});
+
+app.get('/empfang', (req, res) => {
+    const data = [...cachedData].sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
+    const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
+    const cards = data.map(p => {
+        const atOffice = p.r === 1;
+        const wtList = getWorkTimeList(p);
+        return `
+        <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
+            <div class="hover-zone">
+                ${renderAvatar(p)}
+                <div class="tooltip">Kernarbeitszeiten:\n${wtList}</div>
+                <span class="name-label">${p.n}</span>
+                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
+            </div>
+        </div>`;
+    }).join('');
+    res.send(`<html>${htmlHead}<body>${styles}
+        <div class="container">
+            <div class="info-banner-container">
+                <div class="info-banner">${infoText}</div>
+                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px; font-size: 1.2rem;" onclick="toggleTheme()">🌓 Theme</button>
+            </div>
+            <div class="grid">${cards}</div>
+        </div></body></html>`);
+});
+
+app.get('/', (req, res) => res.redirect('/dashboard'));
+app.listen(port, '0.0.0.0', () => console.log("Server online"));
