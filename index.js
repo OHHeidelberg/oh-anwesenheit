@@ -69,8 +69,8 @@ const styles = `
   .grid { 
     flex: 1; display: grid; 
     grid-template-columns: repeat(auto-fill, minmax(14vw, 1fr)); 
-    grid-auto-rows: 1fr; gap: 10px; width: 100%; overflow-y: auto; 
-    padding-right: 5px;
+    grid-auto-rows: 1fr; gap: 12px; width: 100%; overflow-y: auto; 
+    padding: 10px 5px;
   }
 
   .grid::-webkit-scrollbar { width: 6px; }
@@ -82,23 +82,50 @@ const styles = `
     position: relative;
   }
 
-  .avatar-container { height: 45%; aspect-ratio: 1/1; margin-bottom: 8px; text-decoration: none; position: relative; }
+  .hover-zone {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: help;
+    position: relative;
+  }
+
+  .avatar-container { height: 70px; width: 70px; margin-bottom: 8px; text-decoration: none; display: block; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); object-fit: cover; background: #8e8e93; }
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
   
-  .name-label { font-weight: bold; font-size: clamp(0.9rem, 1.1vw, 1.2rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
+  .name-label { font-weight: bold; font-size: clamp(0.85rem, 1vw, 1.1rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
 
   .status-badge { 
-    padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.85vw, 0.95rem); font-weight: 700; width: 90%; 
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; cursor: help; position: relative;
+    padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.8vw, 0.9rem); font-weight: 700; width: 90%; 
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
   }
 
-  .status-badge:hover::after {
-    content: attr(data-worktimes);
-    position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
-    background: #333; color: #fff; padding: 10px; border-radius: 8px;
-    font-size: 0.8rem; white-space: pre-wrap; z-index: 100; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    width: max-content; text-align: left; line-height: 1.4;
+  .tooltip {
+    visibility: hidden;
+    position: absolute;
+    bottom: 110%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #fff;
+    text-align: left;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: pre;
+    z-index: 9999;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+
+  .hover-zone:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
   }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
@@ -120,9 +147,9 @@ const styles = `
   @media (max-width: 800px) {
     html, body { overflow: auto; height: auto; }
     .container { overflow: visible; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); grid-auto-rows: 160px; overflow: visible; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); grid-auto-rows: 170px; overflow: visible; }
     .footer-bar { height: auto; padding: 15px; flex-direction: column; align-items: stretch; }
-    .avatar-container { height: 60px; }
+    .tooltip { width: 140px; white-space: pre-wrap; left: 0; transform: none; }
   }
 </style>`;
 
@@ -192,13 +219,52 @@ async function updateData() {
     } catch (e) {}
 }
 
+setInterval(async () => {
+    const nowObj = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
+    const now = Math.floor(Date.now() / 1000);
+    const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
+
+    for (let userId in pauseStorage) {
+        if (now >= pauseStorage[userId].expires) {
+            const old = pauseStorage[userId];
+            try {
+                await axios.post('https://slack.com/api/users.profile.set', { user: userId, profile: { status_text: old.text, status_emoji: old.emoji, status_expiration: old.oldExpiration } }, { headers: h });
+                delete pauseStorage[userId];
+                await updateData();
+            } catch (e) {}
+        }
+    }
+    if (nowObj.getHours() === 23 && nowObj.getMinutes() === 30) {
+        for (const person of cachedData) {
+            if (person.id && person.id !== "kein") {
+                const lowT = (person.t || "").toLowerCase();
+                if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
+                    try {
+                        await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: "Abwesend", status_emoji: ":wave:", status_expiration: 0 } }, { headers: h });
+                    } catch (e) {}
+                }
+            }
+        }
+        pauseStorage = {}; 
+        await updateData();
+    }
+}, 60000);
+
 setInterval(updateData, 120000); updateData();
 
 app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
         const wtList = getWorkTimeList(p);
-        return `<div class="card">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${p.c}" data-worktimes="Kernarbeitszeiten:\n${wtList}">${p.e} ${p.t}</div></div>`;
+        return `
+        <div class="card">
+            <div class="hover-zone">
+                ${renderAvatar(p)}
+                <div class="tooltip">Kernarbeitszeiten:\n${wtList}</div>
+                <span class="name-label">${p.n}</span>
+                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            </div>
+        </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
@@ -237,13 +303,9 @@ app.get('/update', async (req, res) => {
     if (person?.id && person.id !== "kein") {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
         const map = { 
-            da:["Im Büro",":office:"], 
-            homeoffice:["Homeoffice",":house_with_garden:"], 
-            besprechung:["Besprechung",":calendar:"], 
-            unterwegs:["Unterwegs",":car:"], 
-            uni:["Uni",":mortar_board:"], 
-            pause:["Pause",":sandwich:"], 
-            weg:["Abwesend",":wave:"] 
+            da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
+            besprechung:["Besprechung",":calendar:"], unterwegs:["Unterwegs",":car:"], 
+            uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"] 
         };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
@@ -252,34 +314,4 @@ app.get('/update', async (req, res) => {
             const berlin = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
             let target = new Date(berlin); target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             if (target < berlin) target.setDate(target.getDate() + 1);
-            expiration = Math.floor(Date.now() / 1000) + Math.floor((target - berlin) / 1000);
-            text += ` bis ${bis}`;
-        }
-        try {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
-            await updateData();
-        } catch (e) {}
-    }
-    res.redirect('/dashboard');
-});
-
-app.get('/empfang', (req, res) => {
-    const data = [...cachedData].sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
-    const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
-    const cards = data.map(p => {
-        const atOffice = p.r === 1;
-        const wtList = getWorkTimeList(p);
-        return `<div class="card" style="opacity:${atOffice ? 1 : 0.3}">${renderAvatar(p)}<span class="name-label">${p.n}</span><div class="status-badge ${atOffice ? p.c : 'bg-away'}" data-worktimes="Kernarbeitszeiten:\n${wtList}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div></div>`;
-    }).join('');
-    res.send(`<html>${htmlHead}<body>${styles}
-        <div class="container">
-            <div class="info-banner-container">
-                <div class="info-banner">${infoText}</div>
-                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px; font-size: 1.2rem;" onclick="toggleTheme()">🌓 Theme</button>
-            </div>
-            <div class="grid">${cards}</div>
-        </div></body></html>`);
-});
-
-app.get('/', (req, res) => res.redirect('/dashboard'));
-app.listen(port, '0.0.0.0', () => console.log("Server online"));
+            expiration = Math.floor(Date.now() / 1000
