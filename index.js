@@ -58,8 +58,8 @@ const htmlHead = `
 
 const styles = `
 <style>
-  :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; }
-  [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; }
+  :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; --tooltip-today: #007aff; }
+  [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; --tooltip-today: #5ac8fa; }
   
   html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; padding: 1vh 1vw; box-sizing: border-box; }
@@ -115,12 +115,18 @@ const styles = `
     border-radius: 8px;
     font-size: 0.75rem;
     line-height: 1.4;
-    white-space: pre;
+    white-space: pre-wrap; /* Auf pre-wrap geändert, damit HTML-Inhalte korrekt umbrechen */
     z-index: 9999;
     box-shadow: 0 5px 15px rgba(0,0,0,0.4);
     opacity: 0;
     transition: opacity 0.2s;
     pointer-events: none;
+  }
+
+  /* CSS für die Markierung des aktuellen Tages im Tooltip */
+  .current-day {
+    color: var(--tooltip-today);
+    font-weight: bold;
   }
 
   .hover-zone:hover .tooltip {
@@ -165,7 +171,8 @@ function getWorkTimeList(person) {
             const t = person.times?.[d];
             timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
         }
-        return (d === today) ? `▶ ${d}: ${timeStr} ◀` : `  ${d}: ${timeStr}`;
+        // HTML-Hervorhebung ohne Pfeile statt reinem Text
+        return (d === today) ? `<span class="current-day">  ${d}: ${timeStr}</span>` : `  ${d}: ${timeStr}`;
     }).join('\n');
 }
 
