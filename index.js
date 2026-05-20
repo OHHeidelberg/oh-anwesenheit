@@ -232,6 +232,8 @@ async function getFullStatus(id) {
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
+        else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
+        else if (lowTxt.includes("christine")) { res.c="bg-active"; res.r=1; res.e="🎉"; } // Neu: r=1 sorgt dafür, dass es als "aktiv/da" gilt
         else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; }
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
@@ -323,8 +325,9 @@ app.get('/dashboard', (req, res) => {
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
+                    <option value="feier">🎉 Mit Christine feiern</option> <!-- Neu -->
                     <option value="weg">🌊 Abwesend</option>
-                </select>
+</select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
             </form>
         </div>
@@ -342,10 +345,11 @@ app.get('/update', async (req, res) => {
     if (person?.id && person.id !== "kein") {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
         const map = { 
-            da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
-            besprechung:["Besprechung",":calendar:"], unterwegs:["Unterwegs",":car:"], 
-            uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"] 
-        };
+    da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
+    besprechung:["Besprechung",":calendar:"], unterwegs:["Unterwegs",":car:"], 
+    uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"],
+    feier:["Mit Christine feiern",":party_unicorn:"] // Neu für Slack: Text & Emoji
+};
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
         if (bis) {
@@ -368,18 +372,19 @@ app.get('/empfang', (req, res) => {
     const data = [...cachedData].sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
-        const atOffice = p.r === 1;
-        const wtList = getWorkTimeList(p);
-        return `
-        <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
-            <div class="hover-zone">
-                ${renderAvatar(p)}
-                <div class="tooltip">Kernarbeitszeiten:\n${wtList}</div>
-                <span class="name-label">${p.n}</span>
-                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
-            </div>
-        </div>`;
-    }).join('');
+    const atOffice = p.r === 1;
+    const wtList = getWorkTimeList(p);
+    return `
+    <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
+        <div class="hover-zone">
+            ${renderAvatar(p)}
+            <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
+            <span class="name-label">${p.n}</span>
+            <!-- Das p.c sorgt jetzt dafür, dass auch das Party-Grün/Party-Emoji angezeigt wird -->
+            <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
+        </div>
+    </div>`;
+}).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="info-banner-container">
