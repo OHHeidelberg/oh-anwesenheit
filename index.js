@@ -56,6 +56,7 @@ const htmlHead = `
     </script>
 </head>`;
 
+// HIER SIND DIE OPTIMIERTEN STYLES FÜR KLEINE UND GROSSE DISPLAYS OHNE SCROLLBARS
 const styles = `
 <style>
   :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; --tooltip-today: #007aff; }
@@ -64,97 +65,127 @@ const styles = `
   html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; padding: 1vh 1vw; box-sizing: border-box; }
 
-  .container { flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 1vh; }
+  .container { flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 1vh; height: 100%; }
 
+  /* Grid dynamischer gemacht: automatische Zeilenhöhen (auto-rows), damit nichts gestaucht wird, aber im Viewport bleibt */
   .grid { 
-    flex: 1; display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(14vw, 1fr)); 
-    grid-auto-rows: 1fr; gap: 12px; width: 100%; overflow-y: auto; 
-    padding: 10px 5px 30px 5px;
+    flex: 1; 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(11vw, 1fr)); 
+    grid-auto-rows: minmax(120px, 1fr); 
+    gap: 1vh; 
+    width: 100%; 
+    overflow-y: auto; 
+    padding: 0.5vh;
+    box-sizing: border-box;
   }
 
   .grid::-webkit-scrollbar { width: 6px; }
   .grid::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
 
   .card { 
-    background: var(--card-bg); padding: 10px; border-radius: 12px; border: 1px solid var(--border-color);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0;
+    background: var(--card-bg); 
+    padding: 8px; 
+    border-radius: 12px; 
+    border: 1px solid var(--border-color);
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+    min-height: 0;
+    min-width: 0;
     position: relative;
+    box-sizing: border-box;
   }
 
   .hover-zone {
     width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: space-between; /* Verteilt Elemente gleichmäßig ohne Überlappung */
     cursor: help;
     position: relative;
   }
 
-  .avatar-container { height: 70px; width: 70px; margin-bottom: 8px; text-decoration: none; display: block; }
+  /* Avatar skaliert jetzt sanft mit der Viewport-Breite, wird auf kleinen Screens aber nicht winzig */
+  .avatar-container { 
+    height: clamp(45px, 4.5vw, 65px); 
+    width: clamp(45px, 4.5vw, 65px); 
+    margin-bottom: 4px; 
+    text-decoration: none; 
+    display: block; 
+    flex-shrink: 0;
+  }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); object-fit: cover; background: #8e8e93; }
-  .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
+  .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: clamp(1rem, 1.2vw, 1.5rem); font-weight: bold; }
   
-  .name-label { font-weight: bold; font-size: clamp(0.85rem, 1vw, 1.1rem); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; }
+  .name-label { font-weight: bold; font-size: clamp(0.75rem, 0.9vw, 1rem); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 95%; text-align: center; flex-shrink: 0; }
 
   .status-badge { 
-    padding: 5px 8px; border-radius: 10px; font-size: clamp(0.7rem, 0.8vw, 0.9rem); font-weight: 700; width: 90%; 
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+    padding: 4px 6px; 
+    border-radius: 8px; 
+    font-size: clamp(0.65rem, 0.75vw, 0.85rem); 
+    font-weight: 700; 
+    width: 95%; 
+    white-space: nowrap; 
+    overflow: hidden; 
+    text-overflow: ellipsis; 
+    text-align: center;
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
 
   .tooltip {
     visibility: hidden;
     position: absolute;
-    top: 110%;
+    top: 105%;
     left: 50%;
     transform: translateX(-50%);
     background-color: #333;
     color: #fff;
     text-align: left;
-    padding: 10px;
+    padding: 8px;
     border-radius: 8px;
     font-size: 0.75rem;
     line-height: 1.4;
-    white-space: pre-wrap; /* Auf pre-wrap geändert, damit HTML-Inhalte korrekt umbrechen */
+    white-space: pre-wrap;
     z-index: 9999;
     box-shadow: 0 5px 15px rgba(0,0,0,0.4);
     opacity: 0;
     transition: opacity 0.2s;
     pointer-events: none;
+    width: max-content;
+    min-width: 130px;
   }
 
-  /* CSS für die Markierung des aktuellen Tages im Tooltip */
-  .current-day {
-    color: var(--tooltip-today);
-    font-weight: bold;
-  }
-
-  .hover-zone:hover .tooltip {
-    visibility: visible;
-    opacity: 1;
-  }
+  .current-day { color: var(--tooltip-today); font-weight: bold; }
+  .hover-zone:hover .tooltip { visibility: visible; opacity: 1; }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
   .bg-red { background: rgba(255, 69, 58, 0.2); color: #ff453a; }
   .bg-away { background: var(--nav-btn-bg); color: #8e8e93; }
 
-  .nav-bar { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 5px; }
-  .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 8px 14px; border-radius: 15px; font-size: 0.85rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
+  /* Kompaktere Navleiste und Fußzeile, um Platz für das Grid zu sparen */
+  .nav-bar { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 2px; }
+  .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 6px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
-  .footer-bar { height: 8vh; min-height: 60px; background: var(--card-bg); margin-top: 5px; padding: 0 15px; display: flex; justify-content: center; align-items: center; gap: 10px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
+  .footer-bar { height: 6vh; min-height: 45px; background: var(--card-bg); margin-top: 2px; padding: 0 12px; display: flex; justify-content: center; align-items: center; gap: 8px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
   
-  select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 8px; border-radius: 8px; font-size: 0.95rem; }
-  .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; padding: 8px 16px; }
+  select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 6px; border-radius: 8px; font-size: 0.85rem; }
+  .btn-update { background: var(--accent-blue); border: none; color: #fff; font-weight: bold; cursor: pointer; padding: 6px 12px; }
 
-  .info-banner-container { display: flex; align-items: center; gap: 10px; height: 7vh; flex-shrink: 0; }
-  .info-banner { flex: 1; height: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: 1.4rem; font-weight: bold; }
+  .info-banner-container { display: flex; align-items: center; gap: 8px; height: 6vh; flex-shrink: 0; }
+  .info-banner { flex: 1; height: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: clamp(1.1rem, 1.5vw, 1.4rem); font-weight: bold; }
 
-  @media (max-width: 800px) {
+  /* Echtes Responsive-Verhalten bei echten Mobilgeräten (max-width: 768px statt 800px) */
+  @media (max-width: 768px) {
     html, body { overflow: auto; height: auto; }
-    .container { overflow: visible; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); grid-auto-rows: 170px; overflow: visible; }
-    .footer-bar { height: auto; padding: 15px; flex-direction: column; align-items: stretch; }
+    .container { overflow: visible; height: auto; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: 150px; overflow: visible; }
+    .footer-bar { height: auto; padding: 12px; flex-direction: column; align-items: stretch; }
     .tooltip { width: 140px; white-space: pre-wrap; left: 0; transform: none; }
   }
 </style>`;
@@ -171,7 +202,6 @@ function getWorkTimeList(person) {
             const t = person.times?.[d];
             timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
         }
-        // HTML-Hervorhebung ohne Pfeile statt reinem Text
         return (d === today) ? `<span class="current-day">  ${d}: ${timeStr}</span>` : `  ${d}: ${timeStr}`;
     }).join('\n');
 }
