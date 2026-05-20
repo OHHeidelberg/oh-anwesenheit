@@ -205,7 +205,8 @@ function getWorkTimeList(person) {
             const t = person.times?.[d];
             timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
         }
-        return (d === today) ? `<span class="current-day">  ${d}: ${timeStr}</span>` : `  ${d}: ${timeStr}`;
+        // Führende Leerzeichen entfernt, damit Flexbox sauber untereinander bricht
+        return (d === today) ? `<span class="current-day">${d}: ${timeStr}</span>` : `${d}: ${timeStr}`;
     }).join('\n');
 }
 
