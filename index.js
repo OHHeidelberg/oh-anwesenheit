@@ -144,23 +144,20 @@ const styles = `
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: #2c2c2e; /* Dunkler, edler Hintergrund, der die Karte komplett überdeckt */
+    background-color: #2c2c2e;
     color: #fff;
     text-align: left;
     padding: 10px;
-    border-radius: 11px; /* Leicht kleiner als die Karte, damit der Rand sauber bleibt */
+    padding-top: 15px; /* Schiebt den Text ein Stück runter, damit er mittig sitzt */
+    border-radius: 11px;
     font-size: clamp(0.7rem, 0.8vw, 0.85rem);
     line-height: 1.4;
-    white-space: pre-wrap;
     z-index: 10;
     box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
     opacity: 0;
     transition: opacity 0.15s ease-in-out;
     pointer-events: none;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: center; /* Zentriert die Zeiten vertikal auf der Karte */
   }
 
   .current-day { color: var(--tooltip-today); font-weight: bold; }
