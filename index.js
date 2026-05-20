@@ -373,7 +373,7 @@ app.get('/update', async (req, res) => {
     da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
     besprechung:["Besprechung",":calendar:"], unterwegs:["Unterwegs",":car:"], 
     uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"],
-    feier:["Mit Christine feiern",":party_unicorn:"] // Neu für Slack: Text & Emoji
+    feier:["Mit Christine feiern",":tada:"] // Neu für Slack: Text & Emoji
 };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
