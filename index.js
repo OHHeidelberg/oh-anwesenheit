@@ -137,10 +137,10 @@ const styles = `
     flex-shrink: 0;
   }
 
-  .tooltip {
+.tooltip {
     visibility: hidden;
     position: absolute;
-    top: 105%;
+    bottom: 105%; /* Positioniert den Tooltip oberhalb der Karte statt darunter */
     left: 50%;
     transform: translateX(-50%);
     background-color: #333;
@@ -152,7 +152,7 @@ const styles = `
     line-height: 1.4;
     white-space: pre-wrap;
     z-index: 9999;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+    box-shadow: 0 -5px 15px rgba(0,0,0,0.4); /* Schatten nach oben angepasst */
     opacity: 0;
     transition: opacity 0.2s;
     pointer-events: none;
