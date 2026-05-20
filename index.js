@@ -140,24 +140,27 @@ const styles = `
 .tooltip {
     visibility: hidden;
     position: absolute;
-    bottom: 105%; /* Positioniert den Tooltip oberhalb der Karte statt darunter */
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: #333;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #2c2c2e; /* Dunkler, edler Hintergrund, der die Karte komplett überdeckt */
     color: #fff;
     text-align: left;
-    padding: 8px;
-    border-radius: 8px;
-    font-size: 0.75rem;
+    padding: 10px;
+    border-radius: 11px; /* Leicht kleiner als die Karte, damit der Rand sauber bleibt */
+    font-size: clamp(0.7rem, 0.8vw, 0.85rem);
     line-height: 1.4;
     white-space: pre-wrap;
-    z-index: 9999;
-    box-shadow: 0 -5px 15px rgba(0,0,0,0.4); /* Schatten nach oben angepasst */
+    z-index: 10;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.15s ease-in-out;
     pointer-events: none;
-    width: max-content;
-    min-width: 130px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* Zentriert die Zeiten vertikal auf der Karte */
   }
 
   .current-day { color: var(--tooltip-today); font-weight: bold; }
