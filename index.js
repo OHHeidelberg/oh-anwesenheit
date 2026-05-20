@@ -163,10 +163,36 @@ const styles = `
   .current-day { color: var(--tooltip-today); font-weight: bold; }
   .hover-zone:hover .tooltip { visibility: visible; opacity: 1; }
 
+/* Hier die bestehenden Farben */
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
   .bg-red { background: rgba(255, 69, 58, 0.2); color: #ff453a; }
   .bg-away { background: var(--nav-btn-bg); color: #8e8e93; }
+
+  /* NEU: Regenbogen-Hintergrund und Blinken für den Christine-Status */
+  .bg-party {
+    background: linear-gradient(120deg, #ff2a5f, #ff9500, #ffcc00, #4cd964, #5ac8fa, #007aff, #5856d6, #ff2a5f);
+    background-size: 400% 400%;
+    color: #ffffff !important; /* Weißer Text, damit man es auf den Farben gut lesen kann */
+    font-weight: 900;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
+    animation: rainbow 6s ease infinite, blink 1.5s ease-in-out infinite;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+  }
+
+  /* Bewegung für den Regenbogen */
+  @keyframes rainbow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  /* Sanftes Blinken (An- und Abschwellen der Deckkraft) */
+  @keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.75; }
+    100% { opacity: 1; }
+  }
 
   /* Kompaktere Navleiste und Fußzeile, um Platz für das Grid zu sparen */
   .nav-bar { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 2px; }
@@ -233,7 +259,7 @@ async function getFullStatus(id) {
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
-        else if (lowTxt.includes("christine")) { res.c="bg-active"; res.r=1; res.e="🎉"; } // Neu: r=1 sorgt dafür, dass es als "aktiv/da" gilt
+        else if (lowTxt.includes("christine")) { res.c="bg-party"; res.r=1; res.e="🎉"; } // Neu: r=1 sorgt dafür, dass es als "aktiv/da" gilt
         else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; }
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
