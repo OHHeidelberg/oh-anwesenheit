@@ -9,7 +9,7 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf
 const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?gid=1558993151&single=true&output=csv';
 
 let cachedData = [];
-let cachedInfoText = "";
+let cachedInfoText = ""; 
 let pauseStorage = {}; 
 
 const htmlHead = `
