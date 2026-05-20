@@ -258,7 +258,6 @@ async function getFullStatus(id) {
         else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
-        else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
         else if (lowTxt.includes("christine")) { res.c="bg-party"; res.r=1; res.e="🎉"; } // Neu: r=1 sorgt dafür, dass es als "aktiv/da" gilt
         else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; }
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
