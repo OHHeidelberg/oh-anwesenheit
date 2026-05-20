@@ -297,7 +297,7 @@ app.get('/dashboard', (req, res) => {
         <div class="card">
             <div class="hover-zone">
                 ${renderAvatar(p)}
-                <div class="tooltip">Kernarbeitszeiten:\n${wtList}</div>
+                <div class="tooltip">Kernarbeitszeiten:<br>\n${wtList}</div>
                 <span class="name-label">${p.n}</span>
                 <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
             </div>
