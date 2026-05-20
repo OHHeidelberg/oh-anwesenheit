@@ -311,7 +311,7 @@ app.get('/dashboard', (req, res) => {
                 <a href="https://outlook.office.com/mail/" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
-                <button class="theme-btn" onclick="toggleTheme()">🌓 Theme</button>
+                <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid">${cards}</div>
             <form action="/update" class="footer-bar">
@@ -384,7 +384,7 @@ app.get('/empfang', (req, res) => {
         <div class="container">
             <div class="info-banner-container">
                 <div class="info-banner">${infoText}</div>
-                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px; font-size: 1.2rem;" onclick="toggleTheme()">🌓 Theme</button>
+                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px; font-size: 1.2rem;" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid">${cards}</div>
         </div></body></html>`);
