@@ -306,8 +306,8 @@ setInterval(async () => {
     }
 
     // 2. Hier stellen wir die gewünschte Uhrzeit ein (z.B. 21:30 oder zum Testen 08:25)
-    const targetHour = 21;
-    const targetMinute = 30;
+    const targetHour = 8;
+    const targetMinute = 35;
 
     if (nowObj.getHours() === targetHour && nowObj.getMinutes() === targetMinute) {
         // Nur ausführen, wenn es in dieser Minute nicht schon gelaufen ist
