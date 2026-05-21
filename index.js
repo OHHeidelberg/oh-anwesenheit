@@ -283,11 +283,17 @@ async function updateData() {
     } catch (e) {}
 }
 
+let resetDoneToday = false;
+
 setInterval(async () => {
-    const nowObj = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
+    // 1. Aktuelle Zeit in der Berlin-Zeitzone ermitteln
+    const berlinTime = new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" });
+    const nowObj = new Date(berlinTime);
+    
     const now = Math.floor(Date.now() / 1000);
     const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
 
+    // Pause-Speicher abarbeiten (unverändert)
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
             const old = pauseStorage[userId];
@@ -298,21 +304,36 @@ setInterval(async () => {
             } catch (e) {}
         }
     }
-    if (nowObj.getHours() === 8 && nowObj.getMinutes() === 25 && nowObj.getSeconds() === 0) {
-        for (const person of cachedData) {
-            if (person.id && person.id !== "kein") {
-                const lowT = (person.t || "").toLowerCase();
-                if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
-                    try {
-                        await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: "Abwesend", status_emoji: ":wave:", status_expiration: 0 } }, { headers: h });
-                    } catch (e) {}
+
+    // 2. Hier stellen wir die gewünschte Uhrzeit ein (z.B. 21:30 oder zum Testen 08:25)
+    const targetHour = 21;
+    const targetMinute = 30;
+
+    if (nowObj.getHours() === targetHour && nowObj.getMinutes() === targetMinute) {
+        // Nur ausführen, wenn es in dieser Minute nicht schon gelaufen ist
+        if (!resetDoneToday) {
+            console.log(`Automatischen Reset um ${targetHour}:${targetMinute} Uhr gestartet...`);
+            
+            for (const person of cachedData) {
+                if (person.id && person.id !== "kein") {
+                    const lowT = (person.t || "").toLowerCase();
+                    if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
+                        try {
+                            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: "Abwesend", status_emoji: ":wave:", status_expiration: 0 } }, { headers: h });
+                        } catch (e) {}
+                    }
                 }
             }
+            pauseStorage = {}; 
+            await updateData();
+            
+            resetDoneToday = true; // Sperre aktivieren
         }
-        pauseStorage = {}; 
-        await updateData();
+    } else {
+        // Sobald die Minute vorbei ist, setzen wir die Sperre für den nächsten Tag zurück
+        resetDoneToday = false;
     }
-}, 60000);
+}, 30000); // Alle 30 Sekunden prüfen sorgt für höhere Genauigkeit
 
 setInterval(updateData, 120000); updateData();
 
