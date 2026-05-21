@@ -371,7 +371,6 @@ app.get('/dashboard', (req, res) => {
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
-                    //<option value="feier">🎉 Mit Christine feiern</option> <!-- Neu -->
                     <option value="weg">🌊 Abwesend</option>
 </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
