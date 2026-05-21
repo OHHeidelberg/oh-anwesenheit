@@ -298,7 +298,7 @@ setInterval(async () => {
             } catch (e) {}
         }
     }
-    if (nowObj.getHours() === 23 && nowObj.getMinutes() === 30) {
+    if (nowObj.getHours() === 8 && nowObj.getMinutes() === 25 && nowObj.getSeconds() === 0) {
         for (const person of cachedData) {
             if (person.id && person.id !== "kein") {
                 const lowT = (person.t || "").toLowerCase();
