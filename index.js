@@ -118,10 +118,11 @@ async function updateData() {
         
         // Nur wenn cachedInfoText noch dem Standard entspricht oder leer ist, aus Sheet laden
         if (!cachedInfoText || cachedInfoText === "OH Heidelberg") {
-           if (!cachedInfoText) {
+            if (!cachedInfoText) {
                 const info = await axios.get(INFO_URL).catch(() => null);
-            if (info) cachedInfoText = info.data.split('\n')[0];
-}
+                if (info) {
+                    cachedInfoText = info.data.split('\n')[0];
+                }
             }
         }
         console.log('Daten erfolgreich aktualisiert');
