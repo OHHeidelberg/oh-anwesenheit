@@ -577,15 +577,20 @@ ${htmlHead}
 
 <script>
 
+document.addEventListener('DOMContentLoaded', () => {
+
     const sel = document.querySelector('select[name="user"]');
 
-    const saved =
-        localStorage.getItem('selectedMitarbeiter');
+    if (!sel) return;
+
+    // Gespeicherten Mitarbeiter laden
+    const saved = localStorage.getItem('selectedMitarbeiter');
 
     if (saved) {
         sel.value = saved;
     }
 
+    // Bei Änderung speichern
     sel.addEventListener('change', () => {
 
         localStorage.setItem(
@@ -594,6 +599,8 @@ ${htmlHead}
         );
 
     });
+
+});
 
 </script>
 
