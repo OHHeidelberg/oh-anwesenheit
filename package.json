@@ -9,7 +9,7 @@
     "express": "^4.18.2",
     "axios": "^1.6.0",
     "csv-parse": "^5.5.3",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
     "express-session": "^1.18.0"
   }
 }
