@@ -451,14 +451,16 @@ app.get('/update', async (req, res) => {
 app.get('/empfang', (req, res) => {
     const data = [...cachedData].sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
-    const cards = data.map(p => {
+   const cards = data.map(p => {
     const atOffice = p.r === 1;
-    const wtList = getWorkTimeList(p);
+    const wtList = getWorkTimeList(p); // <-- Kann gelöscht werden
+    return `
+const cards = data.map(p => {
+    const atOffice = p.r === 1;
     return `
     <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
-        <div class="hover-zone">
+        <div style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; position: relative;">
             ${renderAvatar(p)}
-            <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
             <span class="name-label">${p.n}</span>
             <!-- Das p.c sorgt jetzt dafür, dass auch das Party-Grün/Party-Emoji angezeigt wird -->
             <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
