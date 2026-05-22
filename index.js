@@ -655,6 +655,18 @@ ${styles}
                 🥪 Pause
             </option>
 
+            <option value="krank">
+            🤒 Krank
+            </option>
+
+            <option value="urlaub">
+            🌴 Urlaub
+            </option>
+            
+            <option value="uni">
+                🎓 Uni
+            </option>
+            
             <option value="weg">
                 🌊 Abwesend
             </option>
@@ -711,15 +723,50 @@ app.get('/update', async (req, res) => {
             Authorization: `Bearer ${SLACK_TOKEN}`
         };
 
-        const map = {
+const map = {
 
-            da: ["Im Büro", ":office:"],
-            homeoffice: ["Homeoffice", ":house_with_garden:"],
-            besprechung: ["Besprechung", ":calendar:"],
-            unterwegs: ["Unterwegs", ":car:"],
-            pause: ["Pause", ":sandwich:"],
-            weg: ["Abwesend", ":wave:"]
-        };
+    da: ["Im Büro", ":office:"],
+
+    homeoffice: [
+        "Homeoffice",
+        ":house_with_garden:"
+    ],
+
+    besprechung: [
+        "Besprechung",
+        ":calendar:"
+    ],
+
+    unterwegs: [
+        "Unterwegs",
+        ":car:"
+    ],
+
+    uni: [
+        "Uni",
+        ":mortar_board:"
+    ],
+
+    pause: [
+        "Pause",
+        ":sandwich:"
+    ],
+
+    krank: [
+        "Krank",
+        ":face_with_thermometer:"
+    ],
+
+    urlaub: [
+        "Urlaub",
+        ":palm_tree:"
+    ],
+
+    weg: [
+        "Abwesend",
+        ":wave:"
+    ]
+};
 
         let [text, emoji] =
             map[status] || ["Im Büro", ":office:"];
