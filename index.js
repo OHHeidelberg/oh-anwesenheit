@@ -5,9 +5,6 @@ const session = require('express-session');
 const fs = require('fs');
 const INFO_FILE = './info.json';
 
-const fs = require('fs');
-const INFO_FILE = './info.json';
-
 // Initialer Wert
 let cachedInfoText = "OH Heidelberg"; 
 
