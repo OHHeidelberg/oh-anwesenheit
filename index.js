@@ -255,7 +255,7 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
-app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
+('/update-info', express.urlencoded({ extended: true }), (req, res) => {
     const { infoText } = req.body;
     cachedInfoText = infoText; // Hier wird der Text im Speicher aktualisiert
     // Optional: Hier könntest du den Text auch in dein Google Sheet zurückschreiben,
@@ -302,8 +302,7 @@ async function updateData() {
                 offDays: r[13] ? r[13].split(',').map(d=>d.trim()) : []
             };
         }));
-        const info = await axios.get(INFO_URL).catch(() => null);
-        if (info) cachedInfoText = info.data.split('\n')[0];
+
     } catch (e) {}
 }
 
