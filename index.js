@@ -632,7 +632,7 @@ ${styles}
             </option>
 
         </select>
-
+<input type="time" name="bis">
         <button type="submit" class="btn-update">
             Update
         </button>
@@ -673,7 +673,7 @@ ${styles}
 
 app.get('/update', async (req, res) => {
 
-    const { user, status } = req.query;
+    const { user, status, bis } = req.query;
 
     const person = cachedData.find(r => r.n === user);
 
@@ -693,8 +693,46 @@ app.get('/update', async (req, res) => {
             weg: ["Abwesend", ":wave:"]
         };
 
-        const [text, emoji] =
+        let [text, emoji] =
             map[status] || ["Im Büro", ":office:"];
+
+        let expiration = 0;
+
+        // =========================================
+        // ENDUHRZEIT
+        // =========================================
+
+        if (bis) {
+
+            const [hours, minutes] = bis.split(':');
+
+            const berlin = new Date(
+                new Date().toLocaleString(
+                    "en-US",
+                    { timeZone: "Europe/Berlin" }
+                )
+            );
+
+            let target = new Date(berlin);
+
+            target.setHours(
+                parseInt(hours),
+                parseInt(minutes),
+                0,
+                0
+            );
+
+            // Wenn Uhrzeit bereits vorbei → nächster Tag
+            if (target < berlin) {
+                target.setDate(target.getDate() + 1);
+            }
+
+            expiration =
+                Math.floor(Date.now() / 1000) +
+                Math.floor((target - berlin) / 1000);
+
+            text += ` bis ${bis}`;
+        }
 
         try {
 
@@ -705,7 +743,7 @@ app.get('/update', async (req, res) => {
                     profile: {
                         status_text: text,
                         status_emoji: emoji,
-                        status_expiration: 0
+                        status_expiration: expiration
                     }
                 },
                 { headers: h }
