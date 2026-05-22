@@ -433,6 +433,30 @@ async function getFullStatus(id) {
             res.e = "🚗";
         }
 
+else if (lowTxt.includes("uni")) {
+    res.c = "bg-home";
+    res.r = 3.6;
+    res.e = "🎓";
+}
+
+else if (lowTxt.includes("krank")) {
+    res.c = "bg-away";
+    res.r = 6;
+    res.e = "🤒";
+}
+
+else if (lowTxt.includes("urlaub")) {
+    res.c = "bg-away";
+    res.r = 7;
+    res.e = "🌴";
+}
+
+else if (lowTxt.includes("christine")) {
+    res.c = "bg-active";
+    res.r = 1;
+    res.e = "🎉";
+}
+        
         return res;
 
     } catch (e) {
