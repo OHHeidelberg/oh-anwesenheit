@@ -595,6 +595,10 @@ ${styles}
 
 </div>
 
+<div class="grid">
+    ${cards}
+</div>
+
     <form action="/update" class="footer-bar">
 
         <select name="user" required>
