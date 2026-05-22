@@ -575,6 +575,29 @@ app.get('/dashboard', (req, res) => {
 <html>
 ${htmlHead}
 
+<script>
+
+    const sel = document.querySelector('select[name="user"]');
+
+    const saved =
+        localStorage.getItem('selectedMitarbeiter');
+
+    if (saved) {
+        sel.value = saved;
+    }
+
+    sel.addEventListener('change', () => {
+
+        localStorage.setItem(
+            'selectedMitarbeiter',
+            sel.value
+        );
+
+    });
+
+</script>
+
+
 <body>
 ${styles}
 
