@@ -244,6 +244,14 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
+app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
+    const { infoText } = req.body;
+    cachedInfoText = infoText; // Hier wird der Text im Speicher aktualisiert
+    // Optional: Hier könntest du den Text auch in dein Google Sheet zurückschreiben,
+    // falls er dort persistent gespeichert werden soll.
+    res.redirect('/dashboard');
+});
+
 async function getFullStatus(id) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
     try {
@@ -379,6 +387,10 @@ app.get('/dashboard', (req, res) => {
                     <option value="weg">🌊 Abwesend</option>
 </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
+            </form>
+            <form action="/update-info" method="POST" style="margin-top: 10px; display: flex; gap: 8px;">
+                <input type="text" name="infoText" value="${cachedInfoText}" placeholder="Info-Text für Empfang..." style="flex: 1;">
+                <button type="submit" class="btn-update">Info setzen</button>
             </form>
         </div>
         <script>
