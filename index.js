@@ -8,6 +8,17 @@ const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?gid=1558993151&single=true&output=csv';
 
+const fs = require('fs');
+const INFO_FILE = './info.json';
+
+// Beim Start versuchen, den Text aus der Datei zu laden
+try {
+    if (fs.existsSync(INFO_FILE)) {
+        cachedInfoText = JSON.parse(fs.readFileSync(INFO_FILE, 'utf8')).text;
+    }
+} catch (e) { console.log("Keine Info-Datei gefunden"); }
+
+
 let cachedData = [];
 let cachedInfoText = ""; 
 let pauseStorage = {}; 
@@ -399,6 +410,13 @@ app.get('/dashboard', (req, res) => {
             if (saved) sel.value = saved;
             sel.addEventListener('change', () => localStorage.setItem('selectedMitarbeiter', sel.value));
         </script></body></html>`);
+});
+
+app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
+    cachedInfoText = req.body.infoText;
+    // Speichere den neuen Text in der Datei
+    fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
+    res.redirect('/dashboard');
 });
 
 app.get('/update', async (req, res) => {
