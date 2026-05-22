@@ -413,8 +413,12 @@ app.get('/dashboard', (req, res) => {
 
 app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
     cachedInfoText = req.body.infoText;
-    // Speichere den neuen Text in der Datei
-    fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
+
+    fs.writeFileSync(
+        INFO_FILE,
+        JSON.stringify({ text: cachedInfoText }, null, 2)
+    );
+
     res.redirect('/dashboard');
 });
 
