@@ -226,10 +226,15 @@ function getWorkTimeList(person) {
         let timeStr = "Frei";
         if (!person.offDays?.includes(d)) {
             const t = person.times?.[d];
-            timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
+            // Prüfe auf "Uni" (case-insensitive)
+            if (t && t.s && t.s.toLowerCase().includes("uni")) {
+                timeStr = "Uni";
+            } else {
+                timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
+            }
         }
         return (d === today) ? `<span class="current-day">${d}: ${timeStr}</span>` : `${d}: ${timeStr}`;
-    }).join('<br>'); // Nutzt jetzt HTML-Zeilenumbrüche statt \n
+    }).join('<br>');
 }
 
 function renderAvatar(person) {
@@ -345,7 +350,7 @@ app.get('/dashboard', (req, res) => {
         <div class="card">
             <div class="hover-zone">
                 ${renderAvatar(p)}
-                <div class="tooltip">Kernarbeitszeiten:<br><br>\n${wtList}</div>
+                <div class="tooltip">Kernpräsenzzeiten:<br><br>\n${wtList}</div>
                 <span class="name-label">${p.n}</span>
                 <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
             </div>
