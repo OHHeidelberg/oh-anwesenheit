@@ -879,7 +879,7 @@ app.get('/empfang', (req, res) => {
 
     const infoText = cachedInfoText
         ? `📢 ${escapeHtml(cachedInfoText)}`
-        : "OH Heidelberg";
+        : "Herzlich Willkommen bei der Lebenshilfe Heidelberg e.V.";
 
     const cards = data.map(p => {
 
