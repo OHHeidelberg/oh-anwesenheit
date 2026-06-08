@@ -433,29 +433,29 @@ async function getFullStatus(id) {
             res.e = "🚗";
         }
 
-else if (lowTxt.includes("uni")) {
-    res.c = "bg-home";
-    res.r = 3.6;
-    res.e = "🎓";
-}
+        else if (lowTxt.includes("uni")) {
+            res.c = "bg-home";
+            res.r = 3.6;
+            res.e = "🎓";
+        }
 
-else if (lowTxt.includes("krank")) {
-    res.c = "bg-away";
-    res.r = 6;
-    res.e = "🤒";
-}
+        else if (lowTxt.includes("krank")) {
+            res.c = "bg-away";
+            res.r = 6;
+            res.e = "🤒";
+        }
 
-else if (lowTxt.includes("urlaub")) {
-    res.c = "bg-away";
-    res.r = 7;
-    res.e = "🌴";
-}
+        else if (lowTxt.includes("urlaub")) {
+            res.c = "bg-away";
+            res.r = 7;
+            res.e = "🌴";
+        }
 
-else if (lowTxt.includes("christine")) {
-    res.c = "bg-active";
-    res.r = 1;
-    res.e = "🎉";
-}
+        else if (lowTxt.includes("christine")) {
+            res.c = "bg-active";
+            res.r = 1;
+            res.e = "🎉";
+        }
         
         return res;
 
@@ -494,6 +494,7 @@ async function updateData() {
                 return {
                     n: r[0],
                     id: r[1],
+                    zeit: r[2] || 'Nicht hinterlegt',
                     ...status
                 };
 
@@ -554,7 +555,7 @@ app.get('/dashboard', (req, res) => {
         .map(p => {
 
             return `
-                <div class="card">
+                <div class="card" title="Kernarbeitszeit: ${escapeHtml(p.zeit)}">
 
                     ${renderAvatar(p)}
 
@@ -615,7 +616,7 @@ ${styles}
     <a href="https://forms.gle/KnKo9CFDjvnMM1sj7"
        target="_blank"
        class="nav-btn">
-       🤒 Krank
+       Structure 🤒 Krank
     </a>
 
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform"
@@ -886,7 +887,7 @@ app.get('/empfang', (req, res) => {
         const atOffice = p.r === 1;
 
         return `
-            <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
+            <div class="card" style="opacity:${atOffice ? 1 : 0.3}" title="Kernarbeitszeit: ${escapeHtml(p.zeit)}">
 
                 ${renderAvatar(p)}
 
