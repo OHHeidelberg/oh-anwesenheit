@@ -380,9 +380,9 @@ app.get('/dashboard', (req, res) => {
             <div class="nav-bar">
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-                <a href="https://outlook.office.com/mail/" target="_blank" class="nav-btn">📬 Outlook</a>
+                <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSetlNl4LucOcOEh1uA3ozTPjEoeHoG4Sq74WQAygS8F_fsKEg/viewform" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
+                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid">${cards}</div>
