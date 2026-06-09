@@ -486,15 +486,47 @@ async function updateData() {
             skip_empty_lines: true
         });
 
+        // Aktuellen Wochentag in deutscher Zeitzone bestimmen
+        const berlinDate = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
+        const dayIdx = berlinDate.getDay(); // 0 = So, 1 = Mo, 2 = Di, 3 = Mi, 4 = Do, 5 = Fr, 6 = Sa
+        const dayMap = { 1: "Mo", 2: "Di", 3: "Mi", 4: "Do", 5: "Fr" };
+        const currentDayKuerzel = dayMap[dayIdx] || "";
+
         cachedData = await Promise.all(
             rows.map(async r => {
 
                 const status = await getFullStatus(r[1]);
 
+                // Berechnen der Kernarbeitszeit für heute
+                let tagesText = "Keine Kernarbeitszeit";
+
+                // Spalte N (Index 13) enthält freie Tage kommagetrennt (z.B. "Mo, Di")
+                const freie Tage = r[13] ? r[13].split(',').map(t => t.trim()) : [];
+
+                if (dayIdx === 0 || dayIdx === 6) {
+                    tagesText = "Wochenende";
+                } else if (freie Tage.includes(currentDayKuerzel)) {
+                    tagesText = "Frei";
+                } else {
+                    // Spaltenzuordnung anhand Wochentag:
+                    // Mo: Start=D(3), End=E(4) | Di: Start=F(5), End=G(6) | Mi: Start=H(7), End=I(8) | Do: Start=J(9), End=K(10) | Fr: Start=L(11), End=M(12)
+                    let startCol = 3 + (dayIdx - 1) * 2;
+                    let endCol = startCol + 1;
+
+                    let startWert = r[startCol] ? r[startCol].trim() : "";
+                    let endWert = r[endCol] ? r[endCol].trim() : "";
+
+                    if (startWert.toLowerCase() === "uni") {
+                        tagesText = "Uni";
+                    } else if (startWert && endWert) {
+                        tagesText = `${startWert} - ${endWert}`;
+                    }
+                }
+
                 return {
                     n: r[0],
                     id: r[1],
-                    zeit: r[2] || 'Nicht hinterlegt',
+                    zeit: tagesText,
                     ...status
                 };
 
@@ -555,7 +587,7 @@ app.get('/dashboard', (req, res) => {
         .map(p => {
 
             return `
-                <div class="card" title="Kernarbeitszeit: ${escapeHtml(p.zeit)}">
+                <div class="card" title="Kernarbeitszeit heute: ${escapeHtml(p.zeit)}">
 
                     ${renderAvatar(p)}
 
@@ -616,7 +648,7 @@ ${styles}
     <a href="https://forms.gle/KnKo9CFDjvnMM1sj7"
        target="_blank"
        class="nav-btn">
-       Structure 🤒 Krank
+       🤒 Krank
     </a>
 
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform"
@@ -887,7 +919,7 @@ app.get('/empfang', (req, res) => {
         const atOffice = p.r === 1;
 
         return `
-            <div class="card" style="opacity:${atOffice ? 1 : 0.3}" title="Kernarbeitszeit: ${escapeHtml(p.zeit)}">
+            <div class="card" style="opacity:${atOffice ? 1 : 0.3}" title="Kernarbeitszeit heute: ${escapeHtml(p.zeit)}">
 
                 ${renderAvatar(p)}
 
