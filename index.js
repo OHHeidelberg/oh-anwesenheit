@@ -258,8 +258,6 @@ function renderAvatar(person) {
 app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
     const { infoText } = req.body;
     cachedInfoText = infoText; // Hier wird der Text im Speicher aktualisiert
-    // Optional: Hier könntest du den Text auch in dein Google Sheet zurückschreiben,
-    // falls er dort persistent gespeichert werden soll.
     res.redirect('/dashboard');
 });
 
@@ -279,10 +277,10 @@ async function getFullStatus(id) {
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
-        else if (lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🗓️"; }
+        else if (lowTxt.includes("besprechung") || lowTxt.includes("termin") || lowTxt.includes("bitte nicht stören") || lowTxt.includes("stören")) { res.c="bg-red"; res.r=4; res.e="🚫"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
-        else if (lowTxt.includes("christine")) { res.c="bg-party"; res.r=1; res.e="🎉"; } // Neu: r=1 sorgt dafür, dass es als "aktiv/da" gilt
+        else if (lowTxt.includes("christine")) { res.c="bg-party"; res.r=1; res.e="🎉"; }
         else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; }
         else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
         else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
@@ -310,14 +308,12 @@ async function updateData() {
 let resetDoneToday = false;
 
 setInterval(async () => {
-    // 1. Aktuelle Zeit in der Berlin-Zeitzone ermitteln
     const berlinTime = new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" });
     const nowObj = new Date(berlinTime);
     
     const now = Math.floor(Date.now() / 1000);
     const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
 
-    // Pause-Speicher abarbeiten (unverändert)
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
             const old = pauseStorage[userId];
@@ -329,12 +325,10 @@ setInterval(async () => {
         }
     }
 
-    // 2. Hier stellen wir die gewünschte Uhrzeit ein (z.B. 21:30 oder zum Testen 08:25)
     const targetHour = 21;
     const targetMinute = 30;
 
     if (nowObj.getHours() === targetHour && nowObj.getMinutes() === targetMinute) {
-        // Nur ausführen, wenn es in dieser Minute nicht schon gelaufen ist
         if (!resetDoneToday) {
             console.log(`Automatischen Reset um ${targetHour}:${targetMinute} Uhr gestartet...`);
             
@@ -351,13 +345,12 @@ setInterval(async () => {
             pauseStorage = {}; 
             await updateData();
             
-            resetDoneToday = true; // Sperre aktivieren
+            resetDoneToday = true;
         }
     } else {
-        // Sobald die Minute vorbei ist, setzen wir die Sperre für den nächsten Tag zurück
         resetDoneToday = false;
     }
-}, 30000); // Alle 30 Sekunden prüfen sorgt für höhere Genauigkeit
+}, 30000);
 
 setInterval(updateData, 120000); updateData();
 
@@ -391,12 +384,12 @@ app.get('/dashboard', (req, res) => {
                 <select name="status">
                     <option value="da">🏢 Büro</option>
                     <option value="homeoffice">🏡 Homeoffice</option>
-                    <option value="besprechung">🗓️ Besprechung</option>
+                    <option value="besprechung">🚫 Bitte nicht stören</option>
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
                     <option value="weg">🌊 Abwesend</option>
-</select>
+                </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
             </form>
             <form action="/update-info" method="POST" style="margin-top: 10px; display: flex; gap: 8px;">
@@ -414,7 +407,6 @@ app.get('/dashboard', (req, res) => {
 
 app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
     cachedInfoText = req.body.infoText;
-    // Speichere den neuen Text in der Datei
     fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
     res.redirect('/dashboard');
 });
@@ -425,11 +417,11 @@ app.get('/update', async (req, res) => {
     if (person?.id && person.id !== "kein") {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
         const map = { 
-    da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
-    besprechung:["Besprechung",":calendar:"], unterwegs:["Unterwegs",":car:"], 
-    uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"],
-    feier:["Mit Christine feiern",":tada:"] // Neu für Slack: Text & Emoji
-};
+            da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
+            besprechung:["Bitte nicht stören",":no_entry_sign:"], unterwegs:["Unterwegs",":car:"], 
+            uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"],
+            feier:["Mit Christine feiern",":tada:"]
+        };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
         if (bis) {
@@ -452,19 +444,18 @@ app.get('/empfang', (req, res) => {
     const data = [...cachedData].sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
-    const atOffice = p.r === 1;
-    const wtList = getWorkTimeList(p);
-    return `
-    <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
-        <div class="hover-zone">
-            ${renderAvatar(p)}
-            <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
-            <span class="name-label">${p.n}</span>
-            <!-- Das p.c sorgt jetzt dafür, dass auch das Party-Grün/Party-Emoji angezeigt wird -->
-            <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
-        </div>
-    </div>`;
-}).join('');
+        const atOffice = p.r === 1;
+        const wtList = getWorkTimeList(p);
+        return `
+        <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
+            <div class="hover-zone">
+                ${renderAvatar(p)}
+                <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
+                <span class="name-label">${p.n}</span>
+                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
+            </div>
+        </div>`;
+    }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="info-banner-container">
