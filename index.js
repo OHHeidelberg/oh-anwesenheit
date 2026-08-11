@@ -11,17 +11,15 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 const fs = require('fs');
 const INFO_FILE = './info.json';
 
-// Beim Start versuchen, den Text aus der Datei zu laden
+let cachedData = [];
+let cachedInfoText = ""; 
+let pauseStorage = {}; 
+
 try {
     if (fs.existsSync(INFO_FILE)) {
         cachedInfoText = JSON.parse(fs.readFileSync(INFO_FILE, 'utf8')).text;
     }
 } catch (e) { console.log("Keine Info-Datei gefunden"); }
-
-
-let cachedData = [];
-let cachedInfoText = ""; 
-let pauseStorage = {}; 
 
 const htmlHead = `
 <head>
@@ -145,7 +143,7 @@ const styles = `
     flex-shrink: 0;
   }
 
-.tooltip {
+  .tooltip {
     visibility: hidden;
     position: absolute;
     top: 0;
@@ -245,12 +243,6 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
-app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
-    const { infoText } = req.body;
-    cachedInfoText = infoText;
-    res.redirect('/dashboard');
-});
-
 async function getFullStatus(id) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
     try {
@@ -267,7 +259,6 @@ async function getFullStatus(id) {
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
-        // HIER AKTUELLES MATCHING FÜR "BITTE NICHT STÖREN" UND "STÖREN" SOWIE ALT-BESTÄNDE:
         else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🚫"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
@@ -343,7 +334,18 @@ setInterval(async () => {
     }
 }, 30000);
 
-setInterval(updateData, 120000); updateData();
+setInterval(updateData, 120000); 
+updateData();
+
+app.use(express.urlencoded({ extended: true }));
+
+app.post('/update-info', (req, res) => {
+    cachedInfoText = req.body.infoText;
+    try {
+        fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
+    } catch (e) {}
+    res.redirect('/dashboard');
+});
 
 app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
@@ -375,7 +377,7 @@ app.get('/dashboard', (req, res) => {
                 <select name="status">
                     <option value="da">🏢 Büro</option>
                     <option value="homeoffice">🏡 Homeoffice</option>
-                    <option value="besprechung">🚫 Bitte nicht stören</option>
+                    <option value="stoeren">🚫 Bitte nicht stören</option>
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
@@ -396,22 +398,21 @@ app.get('/dashboard', (req, res) => {
         </script></body></html>`);
 });
 
-app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
-    cachedInfoText = req.body.infoText;
-    fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
-    res.redirect('/dashboard');
-});
-
 app.get('/update', async (req, res) => {
     const { user, status, bis } = req.query;
     const person = cachedData.find(r => r.n === user);
     if (person?.id && person.id !== "kein") {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
         const map = { 
-            da:["Im Büro",":office:"], homeoffice:["Homeoffice",":house_with_garden:"], 
-            besprechung:["Bitte nicht stören",":no_entry_sign:"], unterwegs:["Unterwegs",":car:"], 
-            uni:["Uni",":mortar_board:"], pause:["Pause",":sandwich:"], weg:["Abwesend",":wave:"],
-            feier:["Mit Christine feiern",":tada:"]
+            da: ["Im Büro", ":office:"], 
+            homeoffice: ["Homeoffice", ":house_with_garden:"], 
+            stoeren: ["Bitte nicht stören", ":no_entry_sign:"],
+            besprechung: ["Bitte nicht stören", ":no_entry_sign:"],
+            unterwegs: ["Unterwegs", ":car:"], 
+            uni: ["Uni", ":mortar_board:"], 
+            pause: ["Pause", ":sandwich:"], 
+            weg: ["Abwesend", ":wave:"],
+            feier: ["Mit Christine feiern", ":tada:"]
         };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
         let expiration = 0;
