@@ -255,17 +255,33 @@ async function getFullStatus(id) {
         const online = s.data?.presence === 'active';
         const txt = prof.status_text || "";
         const lowTxt = txt.toLowerCase();
-        let res = { t: txt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", p: prof.image_192, r: 8 };
+
+        let displayTxt = txt;
+
+        let res = { t: displayTxt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", p: prof.image_192, r: 8 };
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
-        if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
-        else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
-        else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🚫"; }
-        else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
-        else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
-        else if (lowTxt.includes("christine")) { res.c="bg-party"; res.r=1; res.e="🎉"; }
-        else if (lowTxt.includes("uni")) { res.c="bg-home"; res.r=3.6; res.e="🎓"; }
-        else if (lowTxt.includes("krank")) { res.c="bg-away"; res.r=6; res.e="🤒"; }
-        else if (lowTxt.includes("urlaub")) { res.c="bg-away"; res.r=7; res.e="🌴"; }
+        
+        if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
+            res.c="bg-active"; res.r=1; res.e="🏢"; 
+        } else if (lowTxt.includes("home")) { 
+            res.c="bg-home"; res.r=3; res.e="🏡"; 
+        } else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { 
+            // Hier überschreiben wir den Text explizit für das Dashboard:
+            res.t = "Bitte nicht stören";
+            res.c = "bg-red"; res.r = 4; res.e = "🚫"; 
+        } else if (lowTxt.includes("unterwegs")) { 
+            res.c="bg-red"; res.r=5; res.e="🚗"; 
+        } else if (lowTxt.includes("pause")) { 
+            res.c="bg-home"; res.r=3.5; res.e="🥪"; 
+        } else if (lowTxt.includes("christine")) { 
+            res.c="bg-party"; res.r=1; res.e="🎉"; 
+        } else if (lowTxt.includes("uni")) { 
+            res.c="bg-home"; res.r=3.6; res.e="🎓"; 
+        } else if (lowTxt.includes("krank")) { 
+            res.c="bg-away"; res.r=6; res.e="🤒"; 
+        } else if (lowTxt.includes("urlaub")) { 
+            res.c="bg-away"; res.r=7; res.e="🌴"; 
+        }
         return res;
     } catch (e) { return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 }; }
 }
