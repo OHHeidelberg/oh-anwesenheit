@@ -67,7 +67,6 @@ const htmlHead = `
     </script>
 </head>`;
 
-// HIER SIND DIE OPTIMIERTEN STYLES FÜR KLEINE UND GROSSE DISPLAYS OHNE SCROLLBARS
 const styles = `
 <style>
   :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; --tooltip-today: #007aff; }
@@ -78,7 +77,6 @@ const styles = `
 
   .container { flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 1vh; height: 100%; }
 
-  /* Grid dynamischer gemacht: automatische Zeilenhöhen (auto-rows), damit nichts gestaucht wird, aber im Viewport bleibt */
   .grid { 
     flex: 1; 
     display: grid; 
@@ -115,12 +113,11 @@ const styles = `
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-between; /* Verteilt Elemente gleichmäßig ohne Überlappung */
+    justify-content: space-between;
     cursor: help;
     position: relative;
   }
 
-  /* Avatar skaliert jetzt sanft mit der Viewport-Breite, wird auf kleinen Screens aber nicht winzig */
   .avatar-container { 
     height: clamp(45px, 4.5vw, 65px); 
     width: clamp(45px, 4.5vw, 65px); 
@@ -159,7 +156,7 @@ const styles = `
     color: #fff;
     text-align: left;
     padding: 10px;
-    padding-top: 15px; /* Schiebt den Text ein Stück runter, damit er mittig sitzt */
+    padding-top: 15px;
     border-radius: 11px;
     font-size: clamp(0.7rem, 0.8vw, 0.85rem);
     line-height: 1.4;
@@ -174,38 +171,33 @@ const styles = `
   .current-day { color: var(--tooltip-today); font-weight: bold; }
   .hover-zone:hover .tooltip { visibility: visible; opacity: 1; }
 
-/* Hier die bestehenden Farben */
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
   .bg-red { background: rgba(255, 69, 58, 0.2); color: #ff453a; }
   .bg-away { background: var(--nav-btn-bg); color: #8e8e93; }
 
-  /* NEU: Regenbogen-Hintergrund und Blinken für den Christine-Status */
   .bg-party {
     background: linear-gradient(120deg, #ff2a5f, #ff9500, #ffcc00, #4cd964, #5ac8fa, #007aff, #5856d6, #ff2a5f);
     background-size: 400% 400%;
-    color: #ffffff !important; /* Weißer Text, damit man es auf den Farben gut lesen kann */
+    color: #ffffff !important;
     font-weight: 900;
     text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
     animation: rainbow 6s ease infinite, blink 1.5s ease-in-out infinite;
     box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
   }
 
-  /* Bewegung für den Regenbogen */
   @keyframes rainbow {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
   }
 
-  /* Sanftes Blinken (An- und Abschwellen der Deckkraft) */
   @keyframes blink {
     0% { opacity: 1; }
     50% { opacity: 0.75; }
     100% { opacity: 1; }
   }
 
-  /* Kompaktere Navleiste und Fußzeile, um Platz für das Grid zu sparen */
   .nav-bar { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 2px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 6px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
@@ -217,7 +209,6 @@ const styles = `
   .info-banner-container { display: flex; align-items: center; gap: 8px; height: 6vh; flex-shrink: 0; }
   .info-banner { flex: 1; height: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: clamp(1.1rem, 1.5vw, 1.4rem); font-weight: bold; }
 
-  /* Echtes Responsive-Verhalten bei echten Mobilgeräten (max-width: 768px statt 800px) */
   @media (max-width: 768px) {
     html, body { overflow: auto; height: auto; }
     .container { overflow: visible; height: auto; }
@@ -237,7 +228,6 @@ function getWorkTimeList(person) {
         let timeStr = "Frei";
         if (!person.offDays?.includes(d)) {
             const t = person.times?.[d];
-            // Prüfe auf "Uni" (case-insensitive)
             if (t && t.s && t.s.toLowerCase().includes("uni")) {
                 timeStr = "Uni";
             } else {
@@ -257,7 +247,7 @@ function renderAvatar(person) {
 
 app.post('/update-info', express.urlencoded({ extended: true }), (req, res) => {
     const { infoText } = req.body;
-    cachedInfoText = infoText; // Hier wird der Text im Speicher aktualisiert
+    cachedInfoText = infoText;
     res.redirect('/dashboard');
 });
 
@@ -277,7 +267,8 @@ async function getFullStatus(id) {
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { res.c="bg-active"; res.r=1; res.e="🏢"; }
         else if (lowTxt.includes("home")) { res.c="bg-home"; res.r=3; res.e="🏡"; }
-        else if (lowTxt.includes("besprechung") || lowTxt.includes("termin") || lowTxt.includes("bitte nicht stören") || lowTxt.includes("stören")) { res.c="bg-red"; res.r=4; res.e="🚫"; }
+        // HIER AKTUELLES MATCHING FÜR "BITTE NICHT STÖREN" UND "STÖREN" SOWIE ALT-BESTÄNDE:
+        else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { res.c="bg-red"; res.r=4; res.e="🚫"; }
         else if (lowTxt.includes("unterwegs")) { res.c="bg-red"; res.r=5; res.e="🚗"; }
         else if (lowTxt.includes("pause")) { res.c="bg-home"; res.r=3.5; res.e="🥪"; }
         else if (lowTxt.includes("christine")) { res.c="bg-party"; res.r=1; res.e="🎉"; }
