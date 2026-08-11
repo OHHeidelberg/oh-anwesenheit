@@ -266,10 +266,12 @@ async function getFullStatus(id) {
         } else if (lowTxt.includes("home")) { 
             res.c="bg-home"; res.r=3; res.e="🏡"; 
         } else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { 
+            // Falls "stören" bereits im Text enthalten ist, behalten wir den Text (z.B. "Nicht stören bis 16:30")
             if (!lowTxt.includes("stören")) {
-                res.t = "Bitte nicht stören";
+                res.t = "Nicht stören";
             } else {
-                res.t = txt;
+                // Entferne eventuell noch vorhandene "Bitte "-Präfixe aus Slack-Statusmeldungen
+                res.t = txt.replace(/^bitte\s+/i, '');
             }
             res.c = "bg-red"; res.r = 4; res.e = "🚫"; 
         } else if (lowTxt.includes("unterwegs")) { 
@@ -396,7 +398,7 @@ app.get('/dashboard', (req, res) => {
                 <select name="status">
                     <option value="da">🏢 Büro</option>
                     <option value="homeoffice">🏡 Homeoffice</option>
-                    <option value="stoeren">🚫 Bitte nicht stören</option>
+                    <option value="stoeren">🚫 Nicht stören</option>
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
@@ -425,8 +427,8 @@ app.get('/update', async (req, res) => {
         const map = { 
             da: ["Im Büro", ":office:"], 
             homeoffice: ["Homeoffice", ":house_with_garden:"], 
-            stoeren: ["Bitte nicht stören", ":no_entry_sign:"],
-            besprechung: ["Bitte nicht stören", ":no_entry_sign:"],
+            stoeren: ["Nicht stören", ":no_entry_sign:"],
+            besprechung: ["Nicht stören", ":no_entry_sign:"],
             unterwegs: ["Unterwegs", ":car:"], 
             uni: ["Uni", ":mortar_board:"], 
             pause: ["Pause", ":sandwich:"], 
