@@ -266,8 +266,11 @@ async function getFullStatus(id) {
         } else if (lowTxt.includes("home")) { 
             res.c="bg-home"; res.r=3; res.e="🏡"; 
         } else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { 
-            // Hier überschreiben wir den Text explizit für das Dashboard:
-            res.t = "Bitte nicht stören";
+            if (!lowTxt.includes("stören")) {
+                res.t = "Bitte nicht stören";
+            } else {
+                res.t = txt;
+            }
             res.c = "bg-red"; res.r = 4; res.e = "🚫"; 
         } else if (lowTxt.includes("unterwegs")) { 
             res.c="bg-red"; res.r=5; res.e="🚗"; 
