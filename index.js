@@ -243,7 +243,7 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
-async function getFullStatus(id) {
+async function getFullStatus(id, urlaubBis = null) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
@@ -266,11 +266,9 @@ async function getFullStatus(id) {
         } else if (lowTxt.includes("home")) { 
             res.c="bg-home"; res.r=3; res.e="🏡"; 
         } else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { 
-            // Falls "stören" bereits im Text enthalten ist, behalten wir den Text (z.B. "Nicht stören bis 16:30")
             if (!lowTxt.includes("stören")) {
                 res.t = "Nicht stören";
             } else {
-                // Entferne eventuell noch vorhandene "Bitte "-Präfixe aus Slack-Statusmeldungen
                 res.t = txt.replace(/^bitte\s+/i, '');
             }
             res.c = "bg-red"; res.r = 4; res.e = "🚫"; 
@@ -285,7 +283,14 @@ async function getFullStatus(id) {
         } else if (lowTxt.includes("krank")) { 
             res.c="bg-away"; res.r=6; res.e="🤒"; 
         } else if (lowTxt.includes("urlaub")) { 
-            res.c="bg-away"; res.r=7; res.e="🌴"; 
+            res.c="bg-away"; 
+            res.r=7; 
+            res.e="🌴"; 
+            if (urlaubBis && urlaubBis !== "") {
+                res.t = `Urlaub bis ${urlaubBis}`;
+            } else {
+                res.t = txt || "Urlaub";
+            }
         }
         return res;
     } catch (e) { return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 }; }
@@ -296,7 +301,8 @@ async function updateData() {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
-            const status = await getFullStatus(r[1]);
+            const urlaubBis = r[3] ? r[3].trim() : null; // Spalte D (Index 3)
+            const status = await getFullStatus(r[1], urlaubBis);
             return { 
                 n: r[0], id: r[1], ...status,
                 times: { "Mo":{s:r[3],e:r[4]}, "Di":{s:r[5],e:r[6]}, "Mi":{s:r[7],e:r[8]}, "Do":{s:r[9],e:r[10]}, "Fr":{s:r[11],e:r[12]} },
