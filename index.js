@@ -301,19 +301,19 @@ async function updateData() {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
-            // Urlaubs-Spalte (Falls bei dir in Spalte N -> Index 13; falls Spalte O -> Index 14)
-            const urlaubBis = r[13] ? r[13].trim() : null; 
+            // Spalte D (Index 3) enthält das Urlaubs-Enddatum
+            const urlaubBis = r[3] ? r[3].trim() : null; 
             const status = await getFullStatus(r[1], urlaubBis);
             return { 
                 n: r[0], id: r[1], ...status,
                 times: { 
-                    "Mo": { s: r[2], e: r[3] }, 
-                    "Di": { s: r[4], e: r[5] }, 
-                    "Mi": { s: r[6], e: r[7] }, 
-                    "Do": { s: r[8], e: r[9] }, 
-                    "Fr": { s: r[10], e: r[11] } 
+                    "Mo": { s: r[4], e: r[5] }, 
+                    "Di": { s: r[6], e: r[7] }, 
+                    "Mi": { s: r[8], e: r[9] }, 
+                    "Do": { s: r[10], e: r[11] }, 
+                    "Fr": { s: r[12], e: r[13] } 
                 },
-                offDays: r[12] ? r[12].split(',').map(d => d.trim()) : []
+                offDays: r[14] ? r[14].split(',').map(d => d.trim()) : []
             };
         }));
         const info = await axios.get(INFO_URL).catch(() => null);
@@ -471,6 +471,7 @@ app.get('/empfang', (req, res) => {
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
         const atOffice = p.r === 1;
+        const isUrlaub = p.t.toLowerCase().includes('urlaub');
         const wtList = getWorkTimeList(p);
         return `
         <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
@@ -478,7 +479,7 @@ app.get('/empfang', (req, res) => {
                 ${renderAvatar(p)}
                 <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
                 <span class="name-label">${p.n}</span>
-                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
+                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : (isUrlaub ? '🌴' : '⚪')} ${atOffice ? p.t : (isUrlaub ? p.t : 'Abwesend')}</div>
             </div>
         </div>`;
     }).join('');
