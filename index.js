@@ -301,12 +301,19 @@ async function updateData() {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
-            const urlaubBis = r[3] ? r[3].trim() : null; // Spalte D (Index 3)
+            // Urlaubs-Spalte (Falls bei dir in Spalte N -> Index 13; falls Spalte O -> Index 14)
+            const urlaubBis = r[13] ? r[13].trim() : null; 
             const status = await getFullStatus(r[1], urlaubBis);
             return { 
                 n: r[0], id: r[1], ...status,
-                times: { "Mo":{s:r[3],e:r[4]}, "Di":{s:r[5],e:r[6]}, "Mi":{s:r[7],e:r[8]}, "Do":{s:r[9],e:r[10]}, "Fr":{s:r[11],e:r[12]} },
-                offDays: r[13] ? r[13].split(',').map(d=>d.trim()) : []
+                times: { 
+                    "Mo": { s: r[2], e: r[3] }, 
+                    "Di": { s: r[4], e: r[5] }, 
+                    "Mi": { s: r[6], e: r[7] }, 
+                    "Do": { s: r[8], e: r[9] }, 
+                    "Fr": { s: r[10], e: r[11] } 
+                },
+                offDays: r[12] ? r[12].split(',').map(d => d.trim()) : []
             };
         }));
         const info = await axios.get(INFO_URL).catch(() => null);
