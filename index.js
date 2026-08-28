@@ -307,11 +307,11 @@ async function updateData() {
             return { 
                 n: r[0], id: r[1], ...status,
                 times: { 
-                    "Mo": { s: r[4], e: r[5] }, 
-                    "Di": { s: r[6], e: r[7] }, 
-                    "Mi": { s: r[8], e: r[9] }, 
-                    "Do": { s: r[10], e: r[11] }, 
-                    "Fr": { s: r[12], e: r[13] } 
+                    "Mo": { s: r[5], e: r[4] }, 
+                    "Di": { s: r[7], e: r[6] }, 
+                    "Mi": { s: r[9], e: r[8] }, 
+                    "Do": { s: r[11], e: r[10] }, 
+                    "Fr": { s: r[13], e: r[12] } 
                 },
                 offDays: r[14] ? r[14].split(',').map(d => d.trim()) : []
             };
