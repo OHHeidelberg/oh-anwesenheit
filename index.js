@@ -8,12 +8,16 @@ const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?gid=1558993151&single=true&output=csv';
 
+// CSV Export URL der Urlaubstabelle (Google Sheet)
+const URLAUB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
+
 const fs = require('fs');
 const INFO_FILE = './info.json';
 
 let cachedData = [];
 let cachedInfoText = ""; 
 let pauseStorage = {}; 
+let urlaubMap = {}; // Speichert das Urlaubs-Enddatum pro Name
 
 try {
     if (fs.existsSync(INFO_FILE)) {
@@ -243,7 +247,65 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
-async function getFullStatus(id) {
+// Hilfsfunktion zum Umwandeln von DD.MM.YYYY in ein Date-Objekt
+function parseGermanDate(dateStr) {
+    if (!dateStr) return null;
+    const parts = dateStr.trim().split('.');
+    if (parts.length < 3) return null;
+    let year = parts[2];
+    if (year.length === 2) year = '20' + year;
+    return new Date(parseInt(year), parseInt(parts[1]) - 1, parseInt(parts[0]));
+}
+
+// Hilfsfunktion zum Formatieren von DD.MM.YYYY in DD.MM.YY
+function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.trim().split('.');
+    if (parts.length < 3) return dateStr;
+    const day = parts[0].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    let year = parts[2];
+    if (year.length === 4) year = year.substring(2);
+    return `${day}.${month}.${year}`;
+}
+
+async function fetchUrlaubData() {
+    try {
+        const res = await axios.get(URLAUB_CSV_URL, { timeout: 8000 });
+        const rows = parse(res.data, { from_line: 2, skip_empty_lines: true });
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        const map = {};
+        rows.forEach(r => {
+            const name = r[1] ? r[1].trim() : '';
+            const startDateStr = r[2];
+            const endDateStr = r[3]; // Spalte D: Letzter Urlaubstag
+            const status = r[6] ? r[6].trim() : '';
+
+            if (!name || !endDateStr) return;
+            
+            // Nur genehmigte Einträge berücksichtigen (falls Status vorhanden)
+            if (status && !status.toLowerCase().includes('genehmigt')) return;
+
+            const startDate = parseGermanDate(startDateStr);
+            const endDate = parseGermanDate(endDateStr);
+
+            if (startDate && endDate) {
+                // Prfün ob der Urlaub aktuell aktiv ist (Heute liegt zwischen Start und Ende)
+                if (today >= startDate && today <= endDate) {
+                    map[name.toLowerCase()] = formatDateShort(endDateStr);
+                }
+            }
+        });
+        urlaubMap = map;
+    } catch (e) {
+        console.log("Fehler beim Abrufen der Urlaubstabelle:", e.message);
+    }
+}
+
+async function getFullStatus(id, name) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
@@ -286,7 +348,23 @@ async function getFullStatus(id) {
             res.c="bg-away"; 
             res.r=7; 
             res.e="🌴"; 
-            res.t = "Urlaub";
+            
+            // Suche nach Enddatum aus der Urlaubstabelle für diesen Namen
+            const searchName = (name || "").toLowerCase();
+            let endDateFormatted = null;
+
+            // Exaktes oder teilweises Matching des Namens
+            Object.keys(urlaubMap).forEach(key => {
+                if (searchName.includes(key) || key.includes(searchName)) {
+                    endDateFormatted = urlaubMap[key];
+                }
+            });
+
+            if (endDateFormatted) {
+                res.t = `Urlaub bis ${endDateFormatted}`;
+            } else {
+                res.t = "Urlaub";
+            }
         }
         return res;
     } catch (e) { return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 }; }
@@ -294,12 +372,15 @@ async function getFullStatus(id) {
 
 async function updateData() {
     try {
+        await fetchUrlaubData(); // Zuerst Urlaubsdaten aktualisieren
+
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
-            const status = await getFullStatus(r[1]);
+            const name = r[0];
+            const status = await getFullStatus(r[1], name);
             return { 
-                n: r[0], id: r[1], ...status,
+                n: name, id: r[1], ...status,
                 times: { 
                     "Mo": { s: r[5], e: r[4] }, 
                     "Di": { s: r[7], e: r[6] }, 
