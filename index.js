@@ -243,7 +243,7 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
-async function getFullStatus(id, urlaubBis = null) {
+async function getFullStatus(id) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
     try {
         const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
@@ -286,11 +286,7 @@ async function getFullStatus(id, urlaubBis = null) {
             res.c="bg-away"; 
             res.r=7; 
             res.e="🌴"; 
-            if (urlaubBis) {
-                res.t = `Urlaub bis ${urlaubBis}`;
-            } else {
-                res.t = "Urlaub";
-            }
+            res.t = "Urlaub";
         }
         return res;
     } catch (e) { return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 }; }
@@ -301,9 +297,7 @@ async function updateData() {
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
-            // Spalte D (Index 3) enthält das Urlaubs-Enddatum
-            const urlaubBis = (r[3] && r[3].trim() !== "") ? r[3].trim() : null; 
-            const status = await getFullStatus(r[1], urlaubBis);
+            const status = await getFullStatus(r[1]);
             return { 
                 n: r[0], id: r[1], ...status,
                 times: { 
