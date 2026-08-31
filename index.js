@@ -8,8 +8,11 @@ const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?gid=1558993151&single=true&output=csv';
 
-// CSV Export URL der Urlaubstabelle (Google Sheet)
+// CSV Export URL für Urlaubstabelle (Google Sheet)
 const URLAUB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
+
+// CSV Export URL für Krankmeldungen (hier ggf. die passende Sheet-URL eintragen)
+const KRANK_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
 
 const fs = require('fs');
 const INFO_FILE = './info.json';
@@ -18,6 +21,7 @@ let cachedData = [];
 let cachedInfoText = ""; 
 let pauseStorage = {}; 
 let urlaubMap = {}; // Speichert das Urlaubs-Enddatum pro Name
+let krankMap = {};  // Speichert das Krank-Datum (Ende bzw. Start) pro Name
 
 try {
     if (fs.existsSync(INFO_FILE)) {
@@ -285,15 +289,12 @@ async function fetchUrlaubData() {
             const status = r[6] ? r[6].trim() : '';
 
             if (!name || !endDateStr) return;
-            
-            // Nur genehmigte Einträge berücksichtigen (falls Status vorhanden)
             if (status && !status.toLowerCase().includes('genehmigt')) return;
 
             const startDate = parseGermanDate(startDateStr);
             const endDate = parseGermanDate(endDateStr);
 
             if (startDate && endDate) {
-                // Prfün ob der Urlaub aktuell aktiv ist (Heute liegt zwischen Start und Ende)
                 if (today >= startDate && today <= endDate) {
                     map[name.toLowerCase()] = formatDateShort(endDateStr);
                 }
@@ -302,6 +303,41 @@ async function fetchUrlaubData() {
         urlaubMap = map;
     } catch (e) {
         console.log("Fehler beim Abrufen der Urlaubstabelle:", e.message);
+    }
+}
+
+async function fetchKrankData() {
+    try {
+        const res = await axios.get(KRANK_CSV_URL, { timeout: 8000 });
+        const rows = parse(res.data, { from_line: 2, skip_empty_lines: true });
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        const map = {};
+        rows.forEach(r => {
+            const name = r[1] ? r[1].trim() : '';
+            const startDateStr = r[2]; // Startdatum
+            const endDateStr = r[3];   // Enddatum (Spalte D)
+
+            if (!name) return;
+
+            const startDate = parseGermanDate(startDateStr);
+            const endDate = parseGermanDate(endDateStr);
+
+            // Falls ein Enddatum existiert, prüfen wir, ob es aktuell ist
+            if (startDate && endDate) {
+                if (today >= startDate && today <= endDate) {
+                    map[name.toLowerCase()] = { type: 'bis', date: formatDateShort(endDateStr) };
+                }
+            } else if (startDate && today >= startDate) {
+                // Falls nur ein Startdatum existiert (z. B. offenes Ende)
+                map[name.toLowerCase()] = { type: 'seit', date: formatDateShort(startDateStr) };
+            }
+        });
+        krankMap = map;
+    } catch (e) {
+        console.log("Fehler beim Abrufen der Krank-Tabelle:", e.message);
     }
 }
 
@@ -343,17 +379,32 @@ async function getFullStatus(id, name) {
         } else if (lowTxt.includes("uni")) { 
             res.c="bg-home"; res.r=3.6; res.e="🎓"; 
         } else if (lowTxt.includes("krank")) { 
-            res.c="bg-away"; res.r=6; res.e="🤒"; 
+            res.c="bg-away"; 
+            res.r=6; 
+            res.e="🤒"; 
+
+            const searchName = (name || "").toLowerCase();
+            let krankInfo = null;
+
+            Object.keys(krankMap).forEach(key => {
+                if (searchName.includes(key) || key.includes(searchName)) {
+                    krankInfo = krankMap[key];
+                }
+            });
+
+            if (krankInfo) {
+                res.t = krankInfo.type === 'bis' ? `Krank bis ${krankInfo.date}` : `Krank seit ${krankInfo.date}`;
+            } else {
+                res.t = "Krank";
+            }
         } else if (lowTxt.includes("urlaub")) { 
             res.c="bg-away"; 
             res.r=7; 
             res.e="🌴"; 
             
-            // Suche nach Enddatum aus der Urlaubstabelle für diesen Namen
             const searchName = (name || "").toLowerCase();
             let endDateFormatted = null;
 
-            // Exaktes oder teilweises Matching des Namens
             Object.keys(urlaubMap).forEach(key => {
                 if (searchName.includes(key) || key.includes(searchName)) {
                     endDateFormatted = urlaubMap[key];
@@ -372,7 +423,7 @@ async function getFullStatus(id, name) {
 
 async function updateData() {
     try {
-        await fetchUrlaubData(); // Zuerst Urlaubsdaten aktualisieren
+        await Promise.all([fetchUrlaubData(), fetchKrankData()]);
 
         const csv = await axios.get(CSV_URL);
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
@@ -547,6 +598,7 @@ app.get('/empfang', (req, res) => {
     const cards = data.map(p => {
         const atOffice = p.r === 1;
         const isUrlaub = p.t.toLowerCase().includes('urlaub');
+        const isKrank = p.t.toLowerCase().includes('krank');
         const wtList = getWorkTimeList(p);
         return `
         <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
@@ -554,7 +606,7 @@ app.get('/empfang', (req, res) => {
                 ${renderAvatar(p)}
                 <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
                 <span class="name-label">${p.n}</span>
-                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : (isUrlaub ? '🌴' : '⚪')} ${atOffice ? p.t : (isUrlaub ? p.t : 'Abwesend')}</div>
+                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : (isUrlaub ? '🌴' : (isKrank ? '🤒' : '⚪'))} ${atOffice ? p.t : (isUrlaub || isKrank ? p.t : 'Abwesend')}</div>
             </div>
         </div>`;
     }).join('');
