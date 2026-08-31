@@ -286,10 +286,10 @@ async function getFullStatus(id, urlaubBis = null) {
             res.c="bg-away"; 
             res.r=7; 
             res.e="🌴"; 
-            if (urlaubBis && urlaubBis !== "") {
+            if (urlaubBis) {
                 res.t = `Urlaub bis ${urlaubBis}`;
             } else {
-                res.t = txt || "Urlaub";
+                res.t = "Urlaub";
             }
         }
         return res;
@@ -302,7 +302,7 @@ async function updateData() {
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
             // Spalte D (Index 3) enthält das Urlaubs-Enddatum
-            const urlaubBis = r[3] ? r[3].trim() : null; 
+            const urlaubBis = (r[3] && r[3].trim() !== "") ? r[3].trim() : null; 
             const status = await getFullStatus(r[1], urlaubBis);
             return { 
                 n: r[0], id: r[1], ...status,
