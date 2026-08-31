@@ -273,6 +273,17 @@ function formatDateShort(dateStr) {
     return `${day}.${month}.${year}`;
 }
 
+// Hilfsfunktion: Wandelt Daten im Freitext (z.B. "02.09.2024" oder "2.9.2024") automatisch in "DD.MM.YY" um
+function reformatDatesInText(text) {
+    if (!text) return text;
+    return text.replace(/\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b/g, (match, d, m, y) => {
+        const day = d.padStart(2, '0');
+        const month = m.padStart(2, '0');
+        const year = y.length === 4 ? y.substring(2) : y;
+        return `${day}.${month}.${year}`;
+    });
+}
+
 async function fetchUrlaubData() {
     try {
         const res = await axios.get(URLAUB_CSV_URL, { timeout: 8000 });
@@ -325,13 +336,11 @@ async function fetchKrankData() {
             const startDate = parseGermanDate(startDateStr);
             const endDate = parseGermanDate(endDateStr);
 
-            // Falls ein Enddatum existiert, prüfen wir, ob es aktuell ist
             if (startDate && endDate) {
                 if (today >= startDate && today <= endDate) {
                     map[name.toLowerCase()] = { type: 'bis', date: formatDateShort(endDateStr) };
                 }
             } else if (startDate && today >= startDate) {
-                // Falls nur ein Startdatum existiert (z. B. offenes Ende)
                 map[name.toLowerCase()] = { type: 'seit', date: formatDateShort(startDateStr) };
             }
         });
@@ -395,7 +404,9 @@ async function getFullStatus(id, name) {
             if (krankInfo) {
                 res.t = krankInfo.type === 'bis' ? `Krank bis ${krankInfo.date}` : `Krank seit ${krankInfo.date}`;
             } else {
-                res.t = "Krank";
+                // Falls in der Tabelle kein Eintrag vorliegt, nutze den eingegebenen Slack-Text
+                // und formatiere enthaltene Datumsangaben zu DD.MM.YY um:
+                res.t = reformatDatesInText(txt || "Krank");
             }
         } else if (lowTxt.includes("urlaub")) { 
             res.c="bg-away"; 
@@ -414,7 +425,7 @@ async function getFullStatus(id, name) {
             if (endDateFormatted) {
                 res.t = `Urlaub bis ${endDateFormatted}`;
             } else {
-                res.t = "Urlaub";
+                res.t = reformatDatesInText(txt || "Urlaub");
             }
         }
         return res;
