@@ -251,37 +251,76 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
-// Hilfsfunktion zum Umwandeln von DD.MM.YYYY in ein Date-Objekt
+// Hilfsfunktion zum Umwandeln von DD.MM.YYYY oder YYYY-MM-DD in ein Date-Objekt
 function parseGermanDate(dateStr) {
     if (!dateStr) return null;
-    const parts = dateStr.trim().split('.');
-    if (parts.length < 3) return null;
-    let year = parts[2];
-    if (year.length === 2) year = '20' + year;
-    return new Date(parseInt(year), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    const str = dateStr.trim();
+
+    if (str.includes('-')) {
+        const parts = str.split('-');
+        if (parts.length === 3) {
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+    }
+
+    if (str.includes('.')) {
+        const parts = str.split('.');
+        if (parts.length >= 3) {
+            let year = parts[2];
+            if (year.length === 2) year = '20' + year;
+            return new Date(parseInt(year), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        }
+    }
+
+    return null;
 }
 
-// Hilfsfunktion zum Formatieren von DD.MM.YYYY in DD.MM.YY
+// Hilfsfunktion zum Formatieren in DD.MM.YY (akzeptiert DD.MM.YYYY und YYYY-MM-DD)
 function formatDateShort(dateStr) {
     if (!dateStr) return '';
-    const parts = dateStr.trim().split('.');
-    if (parts.length < 3) return dateStr;
-    const day = parts[0].padStart(2, '0');
-    const month = parts[1].padStart(2, '0');
-    let year = parts[2];
-    if (year.length === 4) year = year.substring(2);
-    return `${day}.${month}.${year}`;
+    const str = dateStr.trim();
+
+    if (str.includes('-')) {
+        const parts = str.split('-');
+        if (parts.length === 3) {
+            const day = parts[2].padStart(2, '0');
+            const month = parts[1].padStart(2, '0');
+            const year = parts[0].substring(2);
+            return `${day}.${month}.${year}`;
+        }
+    }
+
+    const parts = str.split('.');
+    if (parts.length >= 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        let year = parts[2];
+        if (year.length === 4) year = year.substring(2);
+        return `${day}.${month}.${year}`;
+    }
+
+    return dateStr;
 }
 
-// Hilfsfunktion: Wandelt Daten im Freitext (z.B. "02.09.2024" oder "2.9.2024") automatisch in "DD.MM.YY" um
+// Wandelt Daten im Freitext (DD.MM.YYYY oder YYYY-MM-DD) automatisch in DD.MM.YY um
 function reformatDatesInText(text) {
     if (!text) return text;
-    return text.replace(/\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b/g, (match, d, m, y) => {
+
+    let formatted = text.replace(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g, (match, y, m, d) => {
+        const day = d.padStart(2, '0');
+        const month = m.padStart(2, '0');
+        const year = y.substring(2);
+        return `${day}.${month}.${year}`;
+    });
+
+    formatted = formatted.replace(/\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b/g, (match, d, m, y) => {
         const day = d.padStart(2, '0');
         const month = m.padStart(2, '0');
         const year = y.length === 4 ? y.substring(2) : y;
         return `${day}.${month}.${year}`;
     });
+
+    return formatted;
 }
 
 async function fetchUrlaubData() {
@@ -404,8 +443,6 @@ async function getFullStatus(id, name) {
             if (krankInfo) {
                 res.t = krankInfo.type === 'bis' ? `Krank bis ${krankInfo.date}` : `Krank seit ${krankInfo.date}`;
             } else {
-                // Falls in der Tabelle kein Eintrag vorliegt, nutze den eingegebenen Slack-Text
-                // und formatiere enthaltene Datumsangaben zu DD.MM.YY um:
                 res.t = reformatDatesInText(txt || "Krank");
             }
         } else if (lowTxt.includes("urlaub")) { 
