@@ -645,8 +645,6 @@ app.get('/empfang', (req, res) => {
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
         const atOffice = p.r === 1;
-        const isUrlaub = p.t.toLowerCase().includes('urlaub');
-        const isKrank = p.t.toLowerCase().includes('krank');
         const wtList = getWorkTimeList(p);
         return `
         <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
@@ -654,7 +652,7 @@ app.get('/empfang', (req, res) => {
                 ${renderAvatar(p)}
                 <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
                 <span class="name-label">${p.n}</span>
-                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : (isUrlaub ? '🌴' : (isKrank ? '🤒' : '⚪'))} ${atOffice ? p.t : (isUrlaub || isKrank ? p.t : 'Abwesend')}</div>
+                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
             </div>
         </div>`;
     }).join('');
