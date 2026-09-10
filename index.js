@@ -481,13 +481,13 @@ async function updateData() {
             return { 
                 n: name, id: r[1], ...status,
                 times: { 
-                    "Mo": { s: r[5], e: r[4] }, 
-                    "Di": { s: r[7], e: r[6] }, 
-                    "Mi": { s: r[9], e: r[8] }, 
-                    "Do": { s: r[11], e: r[10] }, 
-                    "Fr": { s: r[13], e: r[12] } 
+                    "Mo": { s: r[5], e: r[4] },  // Spalte F / E
+                    "Di": { s: r[7], e: r[6] },  // Spalte H / G
+                    "Mi": { s: r[9], e: r[8] },  // Spalte J / I
+                    "Do": { s: r[11], e: r[10] },// Spalte L / K
+                    "Fr": { s: r[12], e: r[11] } // Spalte M (s) / Spalte L (e)
                 },
-                offDays: r[14] ? r[14].split(',').map(d => d.trim()) : []
+                offDays: r[13] ? r[13].split(',').map(d => d.trim()) : [] // Spalte N
             };
         }));
         const info = await axios.get(INFO_URL).catch(() => null);
