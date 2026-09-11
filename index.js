@@ -11,7 +11,7 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 // CSV Export URL für Urlaubstabelle (Google Sheet)
 const URLAUB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
 
-// CSV Export URL für Krankmeldungen (hier ggf. die passende Sheet-URL eintragen)
+// CSV Export URL für Krankmeldungen
 const KRANK_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
 
 const fs = require('fs');
@@ -75,8 +75,26 @@ const htmlHead = `
 
 const styles = `
 <style>
-  :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; }
-  [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; }
+  :root { 
+    --bg-color: #f2f2f7; 
+    --card-bg: #ffffff; 
+    --text-color: #000000; 
+    --accent-blue: #007aff; 
+    --border-color: #d1d1d6; 
+    --nav-btn-bg: #e5e5ea; 
+    --tooltip-bg: rgba(0, 0, 0, 0.88);
+    --tooltip-text: #ffffff;
+  }
+  [data-theme="dark"] { 
+    --bg-color: #000000; 
+    --card-bg: #1c1c1e; 
+    --text-color: #ffffff; 
+    --accent-blue: #0a84ff; 
+    --border-color: #38383a; 
+    --nav-btn-bg: #2c2c2e; 
+    --tooltip-bg: rgba(40, 40, 42, 0.95);
+    --tooltip-text: #ffffff;
+  }
   
   html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; padding: 1vh 1vw; box-sizing: border-box; }
@@ -111,6 +129,59 @@ const styles = `
     min-width: 0;
     position: relative;
     box-sizing: border-box;
+  }
+
+  /* Tooltip Styles */
+  .has-tooltip { position: relative; }
+  .tooltip {
+    visibility: hidden;
+    opacity: 0;
+    width: 170px;
+    background-color: var(--tooltip-bg);
+    color: var(--tooltip-text);
+    text-align: left;
+    border-radius: 8px;
+    padding: 8px 10px;
+    position: absolute;
+    z-index: 100;
+    bottom: 105%;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    font-size: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    border: 1px solid var(--border-color);
+    line-height: 1.3;
+  }
+
+  .tooltip-title {
+    font-weight: bold;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+    text-align: center;
+    font-size: 0.75rem;
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+
+  .tooltip-day {
+    font-weight: 600;
+    opacity: 0.85;
+  }
+
+  .tooltip-time {
+    text-align: right;
+  }
+
+  .card:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
   }
 
   .avatar-container { 
@@ -193,6 +264,47 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
+// Hilfsfunktion zum Formatieren der Kernpräsenzzeit pro Tag
+function formatDayTime(startRaw, endRaw) {
+    const start = (startRaw || "").trim();
+    const end = (endRaw || "").trim();
+    const startLow = start.toLowerCase();
+
+    if (!start && !end) return "k.A.";
+    if (startLow === "frei") return "frei";
+    if (startLow === "uni") return "Uni";
+    if (startLow === "homeoffice") return "Homeoffice";
+    
+    if (start && end) return `${start} - ${end}`;
+    if (start) return start;
+    return "k.A.";
+}
+
+// Hilfsfunktion zum Erzeugen des Tooltip-HTML
+function renderTooltip(presence) {
+    if (!presence) return "";
+    const days = [
+        { label: "Mo", val: presence.mo },
+        { label: "Di", val: presence.di },
+        { label: "Mi", val: presence.mi },
+        { label: "Do", val: presence.do },
+        { label: "Fr", val: presence.fr }
+    ];
+
+    const rows = days.map(d => `
+        <div class="tooltip-row">
+            <span class="tooltip-day">${d.label}:</span>
+            <span class="tooltip-time">${d.val}</span>
+        </div>
+    `).join('');
+
+    return `
+    <div class="tooltip">
+        <div class="tooltip-title">Kernpräsenzzeiten</div>
+        ${rows}
+    </div>`;
+}
+
 // Hilfsfunktion zum Umwandeln von DD.MM.YYYY oder YYYY-MM-DD in ein Date-Objekt
 function parseGermanDate(dateStr) {
     if (!dateStr) return null;
@@ -244,7 +356,7 @@ function formatDateShort(dateStr) {
     return dateStr;
 }
 
-// Wandelt Daten im Freitext (DD.MM.YYYY oder YYYY-MM-DD) automatisch in DD.MM.YY um
+// Wandelt Daten im Freitext automatisch in DD.MM.YY um
 function reformatDatesInText(text) {
     if (!text) return text;
 
@@ -277,7 +389,7 @@ async function fetchUrlaubData() {
         rows.forEach(r => {
             const name = r[1] ? r[1].trim() : '';
             const startDateStr = r[2];
-            const endDateStr = r[3]; // Spalte D: Letzter Urlaubstag
+            const endDateStr = r[3];
             const status = r[6] ? r[6].trim() : '';
 
             if (!name || !endDateStr) return;
@@ -309,8 +421,8 @@ async function fetchKrankData() {
         const map = {};
         rows.forEach(r => {
             const name = r[1] ? r[1].trim() : '';
-            const startDateStr = r[2]; // Startdatum
-            const endDateStr = r[3];   // Enddatum (Spalte D)
+            const startDateStr = r[2];
+            const endDateStr = r[3];
 
             if (!name) return;
 
@@ -419,9 +531,20 @@ async function updateData() {
         const rows = parse(csv.data, { from_line: 2, skip_empty_lines: true });
         cachedData = await Promise.all(rows.map(async r => {
             const name = r[0];
-            const status = await getFullStatus(r[1], name);
+            const slackId = r[1];
+
+            // Kernpräsenzzeiten einlesen (Spalte D [Index 3] bis M [Index 12])
+            const presence = {
+                mo: formatDayTime(r[3], r[4]),
+                di: formatDayTime(r[5], r[6]),
+                mi: formatDayTime(r[7], r[8]),
+                do: formatDayTime(r[9], r[10]),
+                fr: formatDayTime(r[11], r[12])
+            };
+
+            const status = await getFullStatus(slackId, name);
             return { 
-                n: name, id: r[1], ...status
+                n: name, id: slackId, presence, ...status
             };
         }));
         const info = await axios.get(INFO_URL).catch(() => null);
@@ -493,10 +616,11 @@ app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
         return `
-        <div class="card">
+        <div class="card has-tooltip">
             ${renderAvatar(p)}
             <span class="name-label">${p.n}</span>
             <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            ${renderTooltip(p.presence)}
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
@@ -576,10 +700,11 @@ app.get('/empfang', (req, res) => {
     const cards = data.map(p => {
         const atOffice = p.r === 1;
         return `
-        <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
+        <div class="card has-tooltip" style="opacity:${atOffice ? 1 : 0.3}">
             ${renderAvatar(p)}
             <span class="name-label">${p.n}</span>
             <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
+            ${renderTooltip(p.presence)}
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
