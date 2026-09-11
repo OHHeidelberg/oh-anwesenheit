@@ -82,8 +82,8 @@ const styles = `
     --accent-blue: #007aff; 
     --border-color: #d1d1d6; 
     --nav-btn-bg: #e5e5ea; 
-    --tooltip-bg: rgba(0, 0, 0, 0.88);
-    --tooltip-text: #ffffff;
+    --tooltip-bg: rgba(255, 255, 255, 0.98);
+    --tooltip-text: #000000;
   }
   [data-theme="dark"] { 
     --bg-color: #000000; 
@@ -92,7 +92,7 @@ const styles = `
     --accent-blue: #0a84ff; 
     --border-color: #38383a; 
     --nav-btn-bg: #2c2c2e; 
-    --tooltip-bg: rgba(40, 40, 42, 0.95);
+    --tooltip-bg: rgba(28, 28, 30, 0.98);
     --tooltip-text: #ffffff;
   }
   
@@ -129,57 +129,69 @@ const styles = `
     min-width: 0;
     position: relative;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
-  /* Tooltip Styles */
-  .has-tooltip { position: relative; }
-  .tooltip {
+  /* Overlay-Tooltip im Kästchen */
+  .tooltip-overlay {
     visibility: hidden;
     opacity: 0;
-    width: 170px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background-color: var(--tooltip-bg);
     color: var(--tooltip-text);
-    text-align: left;
-    border-radius: 8px;
-    padding: 8px 10px;
-    position: absolute;
-    z-index: 100;
-    bottom: 105%;
-    left: 50%;
-    transform: translateX(-50%);
+    border-radius: 11px;
+    padding: 6px 8px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
     transition: opacity 0.2s ease, visibility 0.2s ease;
-    font-size: 0.75rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    box-sizing: border-box;
     pointer-events: none;
-    border: 1px solid var(--border-color);
-    line-height: 1.3;
+    backdrop-filter: blur(4px);
   }
 
   .tooltip-title {
     font-weight: bold;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    padding-bottom: 3px;
-    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 2px;
+    margin-bottom: 2px;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: clamp(0.65rem, 0.75vw, 0.85rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tooltip-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    flex: 1;
   }
 
   .tooltip-row {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 2px;
+    font-size: clamp(0.6rem, 0.7vw, 0.8rem);
+    line-height: 1.1;
   }
 
   .tooltip-day {
-    font-weight: 600;
-    opacity: 0.85;
+    font-weight: 700;
+    opacity: 0.8;
   }
 
   .tooltip-time {
     text-align: right;
+    font-weight: 500;
   }
 
-  .card:hover .tooltip {
+  .card:hover .tooltip-overlay {
     visibility: visible;
     opacity: 1;
   }
@@ -275,20 +287,20 @@ function formatDayTime(startRaw, endRaw) {
     if (startLow === "uni") return "Uni";
     if (startLow === "homeoffice") return "Homeoffice";
     
-    if (start && end) return `${start} - ${end}`;
+    if (start && end) return `${start}-${end}`;
     if (start) return start;
     return "k.A.";
 }
 
-// Hilfsfunktion zum Erzeugen des Tooltip-HTML
-function renderTooltip(presence) {
-    if (!presence) return "";
+// Hilfsfunktion zum Erzeugen des Overlay-Tooltips
+function renderTooltip(person) {
+    if (!person || !person.presence) return "";
     const days = [
-        { label: "Mo", val: presence.mo },
-        { label: "Di", val: presence.di },
-        { label: "Mi", val: presence.mi },
-        { label: "Do", val: presence.do },
-        { label: "Fr", val: presence.fr }
+        { label: "Mo", val: person.presence.mo },
+        { label: "Di", val: person.presence.di },
+        { label: "Mi", val: person.presence.mi },
+        { label: "Do", val: person.presence.do },
+        { label: "Fr", val: person.presence.fr }
     ];
 
     const rows = days.map(d => `
@@ -299,9 +311,11 @@ function renderTooltip(presence) {
     `).join('');
 
     return `
-    <div class="tooltip">
-        <div class="tooltip-title">Kernpräsenzzeiten</div>
-        ${rows}
+    <div class="tooltip-overlay">
+        <div class="tooltip-title">${person.n}</div>
+        <div class="tooltip-body">
+            ${rows}
+        </div>
     </div>`;
 }
 
@@ -616,11 +630,11 @@ app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
         return `
-        <div class="card has-tooltip">
+        <div class="card">
             ${renderAvatar(p)}
             <span class="name-label">${p.n}</span>
             <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-            ${renderTooltip(p.presence)}
+            ${renderTooltip(p)}
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
@@ -700,11 +714,11 @@ app.get('/empfang', (req, res) => {
     const cards = data.map(p => {
         const atOffice = p.r === 1;
         return `
-        <div class="card has-tooltip" style="opacity:${atOffice ? 1 : 0.3}">
+        <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
             ${renderAvatar(p)}
             <span class="name-label">${p.n}</span>
             <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
-            ${renderTooltip(p.presence)}
+            ${renderTooltip(p)}
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
