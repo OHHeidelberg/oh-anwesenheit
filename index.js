@@ -193,6 +193,13 @@ const styles = `
     font-weight: 500;
   }
 
+  /* Hervorhebung für den aktuellen Wochentag */
+  .tooltip-current {
+    color: var(--accent-blue) !important;
+    font-weight: 800 !important;
+    opacity: 1 !important;
+  }
+
   .card:hover .tooltip-overlay {
     visibility: visible;
     opacity: 1;
@@ -294,23 +301,30 @@ function formatDayTime(startRaw, endRaw) {
     return "k.A.";
 }
 
-// Hilfsfunktion zum Erzeugen des Overlay-Tooltips
+// Hilfsfunktion zum Erzeugen des Overlay-Tooltips mit Hervorhebung des aktuellen Wochentags
 function renderTooltip(person) {
     if (!person || !person.presence) return "";
+
+    // Aktuellen Wochentag für Berlin/Deutschland ermitteln (1 = Mo, 2 = Di, ..., 5 = Fr)
+    const todayIndex = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" })).getDay();
+
     const days = [
-        { label: "Mo", val: person.presence.mo },
-        { label: "Di", val: person.presence.di },
-        { label: "Mi", val: person.presence.mi },
-        { label: "Do", val: person.presence.do },
-        { label: "Fr", val: person.presence.fr }
+        { id: 1, label: "Mo", val: person.presence.mo },
+        { id: 2, label: "Di", val: person.presence.di },
+        { id: 3, label: "Mi", val: person.presence.mi },
+        { id: 4, label: "Do", val: person.presence.do },
+        { id: 5, label: "Fr", val: person.presence.fr }
     ];
 
-    const rows = days.map(d => `
+    const rows = days.map(d => {
+        const isToday = d.id === todayIndex;
+        const currentClass = isToday ? ' tooltip-current' : '';
+        return `
         <div class="tooltip-row">
-            <span class="tooltip-day">${d.label}:</span>
-            <span class="tooltip-time">${d.val}</span>
-        </div>
-    `).join('');
+            <span class="tooltip-day${currentClass}">${d.label}:</span>
+            <span class="tooltip-time${currentClass}">${d.val}</span>
+        </div>`;
+    }).join('');
 
     return `
     <div class="tooltip-overlay">
