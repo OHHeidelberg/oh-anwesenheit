@@ -132,7 +132,7 @@ const styles = `
     overflow: hidden;
   }
 
-  /* Overlay-Tooltip im Kästchen */
+  /* Overlay-Tooltip im Kästchen (Kompaktere Abstände) */
   .tooltip-overlay {
     visibility: hidden;
     opacity: 0;
@@ -144,12 +144,12 @@ const styles = `
     background-color: var(--tooltip-bg);
     color: var(--tooltip-text);
     border-radius: 11px;
-    padding: 6px 8px;
+    padding: 4px 6px;
     z-index: 10;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
     box-sizing: border-box;
     pointer-events: none;
     backdrop-filter: blur(4px);
@@ -158,27 +158,29 @@ const styles = `
   .tooltip-title {
     font-weight: bold;
     border-bottom: 1px solid var(--border-color);
-    padding-bottom: 2px;
-    margin-bottom: 2px;
+    padding-bottom: 1px;
+    margin-bottom: 1px;
     text-align: center;
-    font-size: clamp(0.65rem, 0.75vw, 0.85rem);
+    font-size: clamp(0.65rem, 0.75vw, 0.8rem);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.1;
   }
 
   .tooltip-body {
     display: flex;
     flex-direction: column;
-    justify-content: space-around;
+    justify-content: space-evenly;
     flex: 1;
   }
 
   .tooltip-row {
     display: flex;
     justify-content: space-between;
-    font-size: clamp(0.6rem, 0.7vw, 0.8rem);
-    line-height: 1.1;
+    font-size: clamp(0.58rem, 0.68vw, 0.78rem);
+    line-height: 0.95;
+    margin: 1px 0;
   }
 
   .tooltip-day {
