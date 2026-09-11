@@ -75,8 +75,8 @@ const htmlHead = `
 
 const styles = `
 <style>
-  :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; --tooltip-today: #007aff; }
-  [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; --tooltip-today: #5ac8fa; }
+  :root { --bg-color: #f2f2f7; --card-bg: #ffffff; --text-color: #000000; --accent-blue: #007aff; --border-color: #d1d1d6; --nav-btn-bg: #e5e5ea; }
+  [data-theme="dark"] { --bg-color: #000000; --card-bg: #1c1c1e; --text-color: #ffffff; --accent-blue: #0a84ff; --border-color: #38383a; --nav-btn-bg: #2c2c2e; }
   
   html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
   body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; padding: 1vh 1vw; box-sizing: border-box; }
@@ -106,22 +106,11 @@ const styles = `
     display: flex; 
     flex-direction: column; 
     align-items: center; 
-    justify-content: center; 
+    justify-content: space-between; 
     min-height: 0;
     min-width: 0;
     position: relative;
     box-sizing: border-box;
-  }
-
-  .hover-zone {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    cursor: help;
-    position: relative;
   }
 
   .avatar-container { 
@@ -150,32 +139,6 @@ const styles = `
     box-sizing: border-box;
     flex-shrink: 0;
   }
-
-  .tooltip {
-    visibility: hidden;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #2c2c2e;
-    color: #fff;
-    text-align: left;
-    padding: 10px;
-    padding-top: 15px;
-    border-radius: 11px;
-    font-size: clamp(0.7rem, 0.8vw, 0.85rem);
-    line-height: 1.4;
-    z-index: 10;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
-    opacity: 0;
-    transition: opacity 0.15s ease-in-out;
-    pointer-events: none;
-    box-sizing: border-box;
-  }
-
-  .current-day { color: var(--tooltip-today); font-weight: bold; }
-  .hover-zone:hover .tooltip { visibility: visible; opacity: 1; }
 
   .bg-active { background: rgba(50, 215, 75, 0.2); color: #32d74b; }
   .bg-home { background: rgba(255, 214, 10, 0.2); color: #ffd60a; }
@@ -220,29 +183,8 @@ const styles = `
     .container { overflow: visible; height: auto; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: 150px; overflow: visible; }
     .footer-bar { height: auto; padding: 12px; flex-direction: column; align-items: stretch; }
-    .tooltip { width: 140px; white-space: pre-wrap; left: 0; transform: none; }
   }
 </style>`;
-
-function getWorkTimeList(person) {
-    const daysArr = ["Mo", "Di", "Mi", "Do", "Fr"];
-    const berlinTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"});
-    const todayNum = new Date(berlinTime).getDay();
-    const today = daysArr[todayNum - 1]; 
-    
-    return daysArr.map(d => {
-        let timeStr = "Frei";
-        if (!person.offDays?.includes(d)) {
-            const t = person.times?.[d];
-            if (t && t.s && t.s.toLowerCase().includes("uni")) {
-                timeStr = "Uni";
-            } else {
-                timeStr = (t && t.s && t.e) ? `${t.s}-${t.e}` : "k.A.";
-            }
-        }
-        return (d === today) ? `<span class="current-day">${d}: ${timeStr}</span>` : `${d}: ${timeStr}`;
-    }).join('<br>');
-}
 
 function renderAvatar(person) {
     const hasPhoto = person.p && person.p.includes('http') && !person.p.includes('placeholder');
@@ -479,15 +421,7 @@ async function updateData() {
             const name = r[0];
             const status = await getFullStatus(r[1], name);
             return { 
-                n: name, id: r[1], ...status,
-                times: { 
-                    "Mo": { s: r[5], e: r[4] },  // Spalte F / E
-                    "Di": { s: r[7], e: r[6] },  // Spalte H / G
-                    "Mi": { s: r[9], e: r[8] },  // Spalte J / I
-                    "Do": { s: r[11], e: r[10] },// Spalte L / K
-                    "Fr": { s: r[12], e: r[11] } // Spalte M (s) / Spalte L (e)
-                },
-                offDays: r[13] ? r[13].split(',').map(d => d.trim()) : [] // Spalte N
+                n: name, id: r[1], ...status
             };
         }));
         const info = await axios.get(INFO_URL).catch(() => null);
@@ -558,15 +492,11 @@ app.post('/update-info', (req, res) => {
 app.get('/dashboard', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
-        const wtList = getWorkTimeList(p);
         return `
         <div class="card">
-            <div class="hover-zone">
-                ${renderAvatar(p)}
-                <div class="tooltip">Kernpräsenzzeiten:<br><br>\n${wtList}</div>
-                <span class="name-label">${p.n}</span>
-                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-            </div>
+            ${renderAvatar(p)}
+            <span class="name-label">${p.n}</span>
+            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
@@ -645,15 +575,11 @@ app.get('/empfang', (req, res) => {
     const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
     const cards = data.map(p => {
         const atOffice = p.r === 1;
-        const wtList = getWorkTimeList(p);
         return `
         <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
-            <div class="hover-zone">
-                ${renderAvatar(p)}
-                <div class="tooltip">Kernarbeitszeiten:<br>${wtList}</div>
-                <span class="name-label">${p.n}</span>
-                <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
-            </div>
+            ${renderAvatar(p)}
+            <span class="name-label">${p.n}</span>
+            <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
         </div>`;
     }).join('');
     res.send(`<html>${htmlHead}<body>${styles}
