@@ -293,6 +293,8 @@ function formatDayTime(startRaw, endRaw) {
 
     if (!start && !end) return "k.A.";
     if (startLow === "frei") return "frei";
+    if (startLow === "sb") return "Schulbegleitung";
+    if (startLow === "sab") return "Schulanschlussbetreuung";
     if (startLow === "uni") return "Uni";
     if (startLow === "homeoffice") return "Homeoffice";
     
