@@ -641,7 +641,7 @@ app.post('/update-info', (req, res) => {
     try {
         fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
     } catch (e) {}
-    res.redirect('/dashboard');
+    res.redirect('back');
 });
 
 app.get('/dashboard', (req, res) => {
@@ -662,6 +662,57 @@ app.get('/dashboard', (req, res) => {
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
+                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
+                <button class="theme-btn" onclick="toggleTheme()">🌓</button>
+            </div>
+            <div class="grid">${cards}</div>
+            <form action="/update" class="footer-bar">
+                <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
+                <select name="status">
+                    <option value="da">🏢 Büro</option>
+                    <option value="homeoffice">🏡 Homeoffice</option>
+                    <option value="stoeren">🚫 Nicht stören</option>
+                    <option value="unterwegs">🚗 Unterwegs</option>
+                    <option value="uni">🎓 Uni</option>
+                    <option value="pause">🥪 Pause</option>
+                    <option value="weg">🌊 Abwesend</option>
+                </select>
+                <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
+            </form>
+            <form action="/update-info" method="POST" style="margin-top: 10px; display: flex; gap: 8px;">
+                <input type="text" name="infoText" value="${cachedInfoText}" placeholder="Info-Text für Empfang..." style="flex: 1;">
+                <button type="submit" class="btn-update">Info setzen</button>
+            </form>
+        </div>
+        <script>
+            const sel = document.getElementById('userSelect');
+            const saved = localStorage.getItem('selectedMitarbeiter');
+            if (saved) sel.value = saved;
+            sel.addEventListener('change', () => localStorage.setItem('selectedMitarbeiter', sel.value));
+        </script></body></html>`);
+});
+
+// Admin99 Ansicht mit den zusätzlichen Buttons
+app.get('/admin99', (req, res) => {
+    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+    const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
+        return `
+        <div class="card">
+            ${renderAvatar(p)}
+            <span class="name-label">${p.n}</span>
+            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            ${renderTooltip(p)}
+        </div>`;
+    }).join('');
+    res.send(`<html>${htmlHead}<body>${styles}
+        <div class="container">
+            <div class="nav-bar">
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
+                <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
+                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
+                <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
+                <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
                 <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
@@ -723,7 +774,7 @@ app.get('/update', async (req, res) => {
             await updateData();
         } catch (e) {}
     }
-    res.redirect('/dashboard');
+    res.redirect('back');
 });
 
 app.get('/empfang', (req, res) => {
