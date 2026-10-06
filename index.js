@@ -132,6 +132,7 @@ const styles = `
     overflow: hidden;
   }
 
+  /* Overlay-Tooltip im Kästchen (Kompaktere Abstände) */
   .tooltip-overlay {
     visibility: hidden;
     opacity: 0;
@@ -192,6 +193,7 @@ const styles = `
     font-weight: 500;
   }
 
+  /* Hervorhebung für den aktuellen Wochentag */
   .tooltip-current {
     color: var(--accent-blue) !important;
     font-weight: 800 !important;
@@ -260,14 +262,6 @@ const styles = `
   .nav-bar { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 2px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 6px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
-  .calendar-frame {
-    flex: 1;
-    width: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    background: var(--card-bg);
-  }
-
   .footer-bar { height: 6vh; min-height: 45px; background: var(--card-bg); margin-top: 2px; padding: 0 12px; display: flex; justify-content: center; align-items: center; gap: 8px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
   
   select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 6px; border-radius: 8px; font-size: 0.85rem; }
@@ -281,7 +275,6 @@ const styles = `
     .container { overflow: visible; height: auto; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: 150px; overflow: visible; }
     .footer-bar { height: auto; padding: 12px; flex-direction: column; align-items: stretch; }
-    .calendar-frame { height: 70vh; }
   }
 </style>`;
 
@@ -292,6 +285,7 @@ function renderAvatar(person) {
     return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
 }
 
+// Hilfsfunktion zum Formatieren der Kernpräsenzzeit pro Tag
 function formatDayTime(startRaw, endRaw) {
     const start = (startRaw || "").trim();
     const end = (endRaw || "").trim();
@@ -309,9 +303,11 @@ function formatDayTime(startRaw, endRaw) {
     return "k.A.";
 }
 
+// Hilfsfunktion zum Erzeugen des Overlay-Tooltips mit Hervorhebung des aktuellen Wochentags
 function renderTooltip(person) {
     if (!person || !person.presence) return "";
 
+    // Aktuellen Wochentag für Berlin/Deutschland ermitteln (1 = Mo, 2 = Di, ..., 5 = Fr)
     const todayIndex = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" })).getDay();
 
     const days = [
@@ -341,6 +337,7 @@ function renderTooltip(person) {
     </div>`;
 }
 
+// Hilfsfunktion zum Umwandeln von DD.MM.YYYY oder YYYY-MM-DD in ein Date-Objekt
 function parseGermanDate(dateStr) {
     if (!dateStr) return null;
     const str = dateStr.trim();
@@ -364,6 +361,7 @@ function parseGermanDate(dateStr) {
     return null;
 }
 
+// Hilfsfunktion zum Formatieren in DD.MM.YY (akzeptiert DD.MM.YYYY und YYYY-MM-DD)
 function formatDateShort(dateStr) {
     if (!dateStr) return '';
     const str = dateStr.trim();
@@ -390,6 +388,7 @@ function formatDateShort(dateStr) {
     return dateStr;
 }
 
+// Wandelt Daten im Freitext automatisch in DD.MM.YY um
 function reformatDatesInText(text) {
     if (!text) return text;
 
@@ -566,6 +565,7 @@ async function updateData() {
             const name = r[0];
             const slackId = r[1];
 
+            // Kernpräsenzzeiten einlesen (Spalte D [Index 3] bis M [Index 12])
             const presence = {
                 mo: formatDayTime(r[3], r[4]),
                 di: formatDayTime(r[5], r[6]),
@@ -658,10 +658,9 @@ app.get('/dashboard', (req, res) => {
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="nav-bar">
-                <a href="/dashboard" class="nav-btn">📊 Dashboard</a>
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-                <a href="/kalender" class="nav-btn">📅 Abwesenheitskalender</a>
+                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" target="_blank" class="nav-btn">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
                 <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
@@ -694,7 +693,7 @@ app.get('/dashboard', (req, res) => {
         </script></body></html>`);
 });
 
-// Admin99 Ansicht
+// Admin99 Ansicht mit den zusätzlichen Buttons
 app.get('/admin99', (req, res) => {
     const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
     const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
@@ -709,15 +708,14 @@ app.get('/admin99', (req, res) => {
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="nav-bar">
-                <a href="/dashboard" class="nav-btn">📊 Dashboard</a>
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-                <a href="/kalender" class="nav-btn">📅 Abwesenheitskalender</a>
+                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" target="_blank" class="nav-btn">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
                 <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
                 <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
+                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid">${cards}</div>
@@ -745,24 +743,6 @@ app.get('/admin99', (req, res) => {
             if (saved) sel.value = saved;
             sel.addEventListener('change', () => localStorage.setItem('selectedMitarbeiter', sel.value));
         </script></body></html>`);
-});
-
-// Neue Route für die Kalenderansicht im selben Tab
-app.get('/kalender', (req, res) => {
-    res.send(`<html>${htmlHead}<body>${styles}
-        <div class="container">
-            <div class="nav-bar">
-                <a href="/dashboard" class="nav-btn">📊 Dashboard</a>
-                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-                <a href="/kalender" class="nav-btn" style="border-color: var(--accent-blue);">📅 Abwesenheitskalender</a>
-                <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
-                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
-                <button class="theme-btn" onclick="toggleTheme()">🌓</button>
-            </div>
-            <iframe src="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="calendar-frame" frameborder="0" scrolling="no"></iframe>
-        </div></body></html>`);
 });
 
 app.get('/update', async (req, res) => {
