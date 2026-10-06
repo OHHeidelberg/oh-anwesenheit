@@ -660,6 +660,7 @@ app.get('/dashboard', (req, res) => {
             <div class="nav-bar">
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
+                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" target="_blank" class="nav-btn">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
                 <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
@@ -709,11 +710,12 @@ app.get('/admin99', (req, res) => {
             <div class="nav-bar">
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
+                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" target="_blank" class="nav-btn">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
                 <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
                 <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
+                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid">${cards}</div>
@@ -767,7 +769,6 @@ app.get('/update', async (req, res) => {
             let target = new Date(berlin); target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             if (target < berlin) target.setDate(target.getDate() + 1);
             expiration = Math.floor(Date.now() / 1000) + Math.floor((target - berlin) / 1000);
-            text += ` bis ${bis}`;
         }
         try {
             await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
@@ -777,28 +778,6 @@ app.get('/update', async (req, res) => {
     res.redirect('back');
 });
 
-app.get('/empfang', (req, res) => {
-    const data = [...cachedData].sort((a, b) => (a.r !== 1) - (b.r !== 1) || a.n.localeCompare(b.n));
-    const infoText = (cachedInfoText && !cachedInfoText.startsWith("<!")) ? `📢 ${cachedInfoText}` : "OH Heidelberg";
-    const cards = data.map(p => {
-        const atOffice = p.r === 1;
-        return `
-        <div class="card" style="opacity:${atOffice ? 1 : 0.3}">
-            ${renderAvatar(p)}
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${atOffice ? p.c : 'bg-away'}">${atOffice ? p.e : '⚪'} ${atOffice ? p.t : 'Abwesend'}</div>
-            ${renderTooltip(p)}
-        </div>`;
-    }).join('');
-    res.send(`<html>${htmlHead}<body>${styles}
-        <div class="container">
-            <div class="info-banner-container">
-                <div class="info-banner">${infoText}</div>
-                <button class="theme-btn" style="height:100%; padding: 0 20px; border-radius: 12px; font-size: 1.2rem;" onclick="toggleTheme()">🌓</button>
-            </div>
-            <div class="grid">${cards}</div>
-        </div></body></html>`);
+app.listen(port, () => {
+    console.log(`Server läuft auf Port ${port}`);
 });
-
-app.get('/', (req, res) => res.redirect('/dashboard'));
-app.listen(port, '0.0.0.0', () => console.log("Server online"));
