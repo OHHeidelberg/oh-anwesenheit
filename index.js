@@ -591,12 +591,11 @@ setInterval(async () => {
         timeZone: "Europe/Berlin"
     });
     const nowObj = new Date(berlinTime);
-
     const now = Math.floor(Date.now() / 1000);
     const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
 
-    // Endzeiten überwachen
-    for (let userId in pauseStorage) {
+    // Statusse mit Endzeit automatisch auf Abwesend setzen
+    for (const userId of Object.keys(pauseStorage)) {
         if (now >= pauseStorage[userId].expires) {
             try {
                 await axios.post(
@@ -613,9 +612,7 @@ setInterval(async () => {
                 );
 
                 delete pauseStorage[userId];
-
                 await updateData();
-
             } catch (e) {
                 console.log(
                     `Fehler beim automatischen Zurücksetzen von ${userId}:`,
@@ -629,25 +626,15 @@ setInterval(async () => {
     const targetHour = 21;
     const targetMinute = 30;
 
-    if (
-        nowObj.getHours() === targetHour &&
-        nowObj.getMinutes() === targetMinute
-    ) {
+    if (nowObj.getHours() === targetHour && nowObj.getMinutes() === targetMinute) {
         if (!resetDoneToday) {
-
-            console.log(
-                `Automatischen Reset um ${targetHour}:${targetMinute} Uhr gestartet...`
-            );
+            console.log(`Automatischen Reset um ${targetHour}:${targetMinute} Uhr gestartet...`);
 
             for (const person of cachedData) {
                 if (person.id && person.id !== "kein") {
-
                     const lowT = (person.t || "").toLowerCase();
 
-                    if (
-                        !lowT.includes("urlaub") &&
-                        !lowT.includes("krank")
-                    ) {
+                    if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
                         try {
                             await axios.post(
                                 'https://slack.com/api/users.profile.set',
@@ -667,15 +654,12 @@ setInterval(async () => {
             }
 
             pauseStorage = {};
-
             await updateData();
-
             resetDoneToday = true;
         }
     } else {
         resetDoneToday = false;
     }
-
 }, 30000);
 
 setInterval(updateData, 120000); 
@@ -916,7 +900,13 @@ try {
 
     await updateData();
 
-} catch (e) {}
+} catch (e) {
+        console.log("Fehler beim Aktualisieren des Status:", e.message);
+    }
+    }
+
+    res.redirect('back');
+});
 
 app.listen(port, () => {
     console.log(`Server läuft auf Port ${port}`);
