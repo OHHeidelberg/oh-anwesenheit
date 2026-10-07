@@ -555,6 +555,19 @@ async function getFullStatus(id, name) {
     } catch (e) { return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 }; }
 }
 
+async function getSlackStatus(userId, headers) {
+    const r = await axios.get(
+        `https://slack.com/api/users.profile.get?user=${userId}`,
+        { headers, timeout: 5000 }
+    );
+    const p = r.data.profile || {};
+    return {
+        text: p.status_text || "",
+        emoji: p.status_emoji || "",
+        expiration: p.status_expiration || 0
+    };
+}
+
 async function updateData() {
     try {
         await Promise.all([fetchUrlaubData(), fetchKrankData()]);
@@ -594,24 +607,40 @@ setInterval(async () => {
     const now = Math.floor(Date.now() / 1000);
     const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
 
-    // Statusse mit Endzeit automatisch auf Abwesend setzen
+    // Statusse mit Endzeit automatisch zurücksetzen
     for (const userId of Object.keys(pauseStorage)) {
-        if (now >= pauseStorage[userId].expires) {
+        const entry = pauseStorage[userId];
+        if (now >= entry.expires) {
             try {
+                const prev = entry.previous;
+                let profile = {
+                    status_text: "Abwesend",
+                    status_emoji: ":wave:",
+                    status_expiration: 0
+                };
+                let nextEntry = null;
+
+                // War vorher ein Status gesetzt (ohne Endzeit oder mit noch gültiger Endzeit)? Dann wiederherstellen.
+                if (entry.isPause && prev && prev.text &&
+                    (prev.expiration === 0 || prev.expiration > now)) {
+                    profile = {
+                        status_text: prev.text,
+                        status_emoji: prev.emoji,
+                        status_expiration: prev.expiration
+                    };
+                    if (prev.expiration > 0) {
+                        nextEntry = { expires: prev.expiration, isPause: false, previous: null };
+                    }
+                }
+
                 await axios.post(
                     'https://slack.com/api/users.profile.set',
-                    {
-                        user: userId,
-                        profile: {
-                            status_text: "Abwesend",
-                            status_emoji: ":wave:",
-                            status_expiration: 0
-                        }
-                    },
+                    { user: userId, profile },
                     { headers: h }
                 );
 
                 delete pauseStorage[userId];
+                if (nextEntry) pauseStorage[userId] = nextEntry;
                 await updateData();
             } catch (e) {
                 console.log(
@@ -875,6 +904,24 @@ if (bis) {
         
 
 
+const uid = person.id.trim();
+let previous = null;
+
+if (status === 'pause') {
+    const existing = pauseStorage[uid];
+    if (existing && existing.isPause && existing.previous) {
+        // Pause wird nur verlängert/geändert -> ursprünglichen Status behalten
+        previous = existing.previous;
+    } else {
+        try {
+            const cur = await getSlackStatus(uid, h);
+            if (cur.text && !cur.text.toLowerCase().includes('pause')) {
+                previous = cur;
+            }
+        } catch (e) {}
+    }
+}
+
 try {
     await axios.post(
         'https://slack.com/api/users.profile.set',
@@ -891,11 +938,13 @@ try {
 
     // Automatische Rückstellung speichern
     if (expiration > 0) {
-        pauseStorage[person.id.trim()] = {
-            expires: expiration
+        pauseStorage[uid] = {
+            expires: expiration,
+            isPause: status === 'pause',
+            previous
         };
     } else {
-        delete pauseStorage[person.id.trim()];
+        delete pauseStorage[uid];
     }
 
     await updateData();
