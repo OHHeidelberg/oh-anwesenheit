@@ -587,67 +587,95 @@ async function updateData() {
 let resetDoneToday = false;
 
 setInterval(async () => {
-    const berlinTime = new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" });
+    const berlinTime = new Date().toLocaleString("en-US", {
+        timeZone: "Europe/Berlin"
+    });
     const nowObj = new Date(berlinTime);
-    
+
     const now = Math.floor(Date.now() / 1000);
     const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
 
+    // Endzeiten überwachen
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
-    try {
-        await axios.post(
-            'https://slack.com/api/users.profile.set',
-            {
-                user: userId,
-                profile: {
-                    status_text: "Abwesend",
-                    status_emoji: ":wave:",
-                    status_expiration: 0
-                }
-            },
-            { headers: h }
-        );
+            try {
+                await axios.post(
+                    'https://slack.com/api/users.profile.set',
+                    {
+                        user: userId,
+                        profile: {
+                            status_text: "Abwesend",
+                            status_emoji: ":wave:",
+                            status_expiration: 0
+                        }
+                    },
+                    { headers: h }
+                );
 
-        delete pauseStorage[userId];
+                delete pauseStorage[userId];
 
-        await updateData();
+                await updateData();
 
-    } catch (e) {
-        console.log(
-            `Fehler beim automatischen Zurücksetzen von ${userId}:`,
-            e.message
-        );
-    }
-}
+            } catch (e) {
+                console.log(
+                    `Fehler beim automatischen Zurücksetzen von ${userId}:`,
+                    e.message
+                );
+            }
         }
     }
 
+    // Täglicher Reset um 21:30 Uhr
     const targetHour = 21;
     const targetMinute = 30;
 
-    if (nowObj.getHours() === targetHour && nowObj.getMinutes() === targetMinute) {
+    if (
+        nowObj.getHours() === targetHour &&
+        nowObj.getMinutes() === targetMinute
+    ) {
         if (!resetDoneToday) {
-            console.log(`Automatischen Reset um ${targetHour}:${targetMinute} Uhr gestartet...`);
-            
+
+            console.log(
+                `Automatischen Reset um ${targetHour}:${targetMinute} Uhr gestartet...`
+            );
+
             for (const person of cachedData) {
                 if (person.id && person.id !== "kein") {
+
                     const lowT = (person.t || "").toLowerCase();
-                    if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
+
+                    if (
+                        !lowT.includes("urlaub") &&
+                        !lowT.includes("krank")
+                    ) {
                         try {
-                            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: "Abwesend", status_emoji: ":wave:", status_expiration: 0 } }, { headers: h });
+                            await axios.post(
+                                'https://slack.com/api/users.profile.set',
+                                {
+                                    user: person.id.trim(),
+                                    profile: {
+                                        status_text: "Abwesend",
+                                        status_emoji: ":wave:",
+                                        status_expiration: 0
+                                    }
+                                },
+                                { headers: h }
+                            );
                         } catch (e) {}
                     }
                 }
             }
-            pauseStorage = {}; 
+
+            pauseStorage = {};
+
             await updateData();
-            
+
             resetDoneToday = true;
         }
     } else {
         resetDoneToday = false;
     }
+
 }, 30000);
 
 setInterval(updateData, 120000); 
