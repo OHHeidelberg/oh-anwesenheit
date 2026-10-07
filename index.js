@@ -62,6 +62,7 @@ const htmlHead = `
         }
 
         async function checkAndReload() {
+            if (window.embedOpen) return;
             if (!navigator.onLine) return;
             try {
                 const response = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
@@ -70,6 +71,26 @@ const htmlHead = `
         }
         setInterval(() => { if (!document.hidden) checkAndReload(); }, 60000);
         window.addEventListener('online', checkAndReload);
+
+        function openEmbed(el) {
+            var frame = document.getElementById('embedFrame');
+            if (!frame) return true;
+            frame.src = el.getAttribute('data-src') || el.href;
+            document.body.classList.add('embed-mode');
+            window.embedOpen = true;
+            document.querySelectorAll('.nav-btn.active').forEach(function(b) { b.classList.remove('active'); });
+            el.classList.add('active');
+            var ext = document.getElementById('embedExternal');
+            if (ext) ext.href = el.href;
+            return false;
+        }
+
+        function closeEmbed() {
+            if (window.embedOpen) {
+                window.embedOpen = false;
+                window.location.reload();
+            }
+        }
     </script>
 </head>`;
 
@@ -259,6 +280,12 @@ const styles = `
     100% { opacity: 1; }
   }
 
+  .embed-frame { display: none; flex: 1; min-height: 0; width: 100%; border: 1px solid var(--border-color); border-radius: 12px; background: #ffffff; box-sizing: border-box; }
+  .embed-only { display: none; }
+  .nav-btn.active { border-color: var(--accent-blue); color: var(--accent-blue); }
+  body.embed-mode .dash-part { display: none !important; }
+  body.embed-mode .embed-frame { display: block; }
+  body.embed-mode .embed-only { display: inline-block; }
   .nav-bar { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 2px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 6px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
@@ -718,16 +745,19 @@ app.get('/dashboard', (req, res) => {
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="nav-bar">
-                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" target="_blank" class="nav-btn">📅 Abwesenheitskalender</a>
-                <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
-                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️ Serverproblem</a>
+                <button class="nav-btn" onclick="closeEmbed()">🏠 Dashboard</button>
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" class="nav-btn" onclick="return openEmbed(this)">🤒 Krank</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" data-src="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform?embedded=true" class="nav-btn" onclick="return openEmbed(this)">🌴 Urlaub</a>
+                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
+                <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
+                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
+                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️ Serverproblem</a>
+                <a id="embedExternal" class="nav-btn embed-only" href="#" target="_blank" rel="noopener">↗ Neuer Tab</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
-            <div class="grid">${cards}</div>
-            <form action="/update" class="footer-bar">
+            <div class="grid dash-part">${cards}</div>
+            <iframe id="embedFrame" class="embed-frame" title="Eingebettete Seite"></iframe>
+            <form action="/update" class="footer-bar dash-part">
                 <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
                 <select name="status">
                     <option value="da">🏢 Büro</option>
@@ -740,7 +770,7 @@ app.get('/dashboard', (req, res) => {
                 </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
             </form>
-            <form action="/update-info" method="POST" style="margin-top: 10px; display: flex; gap: 8px;">
+            <form action="/update-info" method="POST" class="dash-part" style="margin-top: 10px; display: flex; gap: 8px;">
                 <input type="text" name="infoText" value="${cachedInfoText}" placeholder="Info-Text für Empfang..." style="flex: 1;">
                 <button type="submit" class="btn-update">Info setzen</button>
             </form>
@@ -768,18 +798,21 @@ app.get('/admin99', (req, res) => {
     res.send(`<html>${htmlHead}<body>${styles}
         <div class="container">
             <div class="nav-bar">
-                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" class="nav-btn">🤒 Krank</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" class="nav-btn">🌴 Urlaub</a>
-                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" target="_blank" class="nav-btn">📅 Abwesenheitskalender</a>
-                <a href="https://mail.hd-werkstaetten.de/owa" target="_blank" class="nav-btn">📬 Outlook</a>
-                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" target="_blank" class="nav-btn">📂 Dokumente</a>
+                <button class="nav-btn" onclick="closeEmbed()">🏠 Dashboard</button>
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" class="nav-btn" onclick="return openEmbed(this)">🤒 Krank</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" data-src="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform?embedded=true" class="nav-btn" onclick="return openEmbed(this)">🌴 Urlaub</a>
+                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
+                <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
+                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
                 <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
                 <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" target="_blank" class="nav-btn" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
+                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
+                <a id="embedExternal" class="nav-btn embed-only" href="#" target="_blank" rel="noopener">↗ Neuer Tab</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
-            <div class="grid">${cards}</div>
-            <form action="/update" class="footer-bar">
+            <div class="grid dash-part">${cards}</div>
+            <iframe id="embedFrame" class="embed-frame" title="Eingebettete Seite"></iframe>
+            <form action="/update" class="footer-bar dash-part">
                 <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
                 <select name="status">
                     <option value="da">🏢 Büro</option>
@@ -792,7 +825,7 @@ app.get('/admin99', (req, res) => {
                 </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
             </form>
-            <form action="/update-info" method="POST" style="margin-top: 10px; display: flex; gap: 8px;">
+            <form action="/update-info" method="POST" class="dash-part" style="margin-top: 10px; display: flex; gap: 8px;">
                 <input type="text" name="infoText" value="${cachedInfoText}" placeholder="Info-Text für Empfang..." style="flex: 1;">
                 <button type="submit" class="btn-update">Info setzen</button>
             </form>
