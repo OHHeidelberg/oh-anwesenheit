@@ -595,12 +595,31 @@ setInterval(async () => {
 
     for (let userId in pauseStorage) {
         if (now >= pauseStorage[userId].expires) {
-            const old = pauseStorage[userId];
-            try {
-                await axios.post('https://slack.com/api/users.profile.set', { user: userId, profile: { status_text: old.text, status_emoji: old.emoji, status_expiration: old.oldExpiration } }, { headers: h });
-                delete pauseStorage[userId];
-                await updateData();
-            } catch (e) {}
+    try {
+        await axios.post(
+            'https://slack.com/api/users.profile.set',
+            {
+                user: userId,
+                profile: {
+                    status_text: "Abwesend",
+                    status_emoji: ":wave:",
+                    status_expiration: 0
+                }
+            },
+            { headers: h }
+        );
+
+        delete pauseStorage[userId];
+
+        await updateData();
+
+    } catch (e) {
+        console.log(
+            `Fehler beim automatischen Zurücksetzen von ${userId}:`,
+            e.message
+        );
+    }
+}
         }
     }
 
