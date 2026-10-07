@@ -844,13 +844,32 @@ if (bis) {
         
 
 
-        try {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: displaytext, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
-            await updateData();
-        } catch (e) {}
+try {
+    await axios.post(
+        'https://slack.com/api/users.profile.set',
+        {
+            user: person.id.trim(),
+            profile: {
+                status_text: displayText,
+                status_emoji: emoji,
+                status_expiration: expiration
+            }
+        },
+        { headers: h }
+    );
+
+    // Automatische Rückstellung speichern
+    if (expiration > 0) {
+        pauseStorage[person.id.trim()] = {
+            expires: expiration
+        };
+    } else {
+        delete pauseStorage[person.id.trim()];
     }
-    res.redirect('back');
-});
+
+    await updateData();
+
+} catch (e) {}
 
 app.listen(port, () => {
     console.log(`Server läuft auf Port ${port}`);
