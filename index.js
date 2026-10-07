@@ -745,6 +745,58 @@ app.get('/admin99', (req, res) => {
         </script></body></html>`);
 });
 
+app.get('/empfang', (req, res) => {
+
+    const cards = [...cachedData]
+        .sort((a, b) => a.r - b.r || a.n.localeCompare(b.n))
+        .map(p => {
+            return `
+            <div class="card">
+                ${renderAvatar(p)}
+                <span class="name-label">${p.n}</span>
+                <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+                ${renderTooltip(p)}
+            </div>`;
+        }).join('');
+
+    res.send(`
+    <html>
+    ${htmlHead}
+    <body>
+    ${styles}
+
+        <div class="container">
+
+            <!-- Nur Theme-Button -->
+            <div style="
+                display:flex;
+                justify-content:flex-end;
+                margin-bottom:8px;
+            ">
+                <button class="theme-btn" onclick="toggleTheme()">🌓</button>
+            </div>
+
+            <!-- Mitarbeiter -->
+            <div class="grid">
+                ${cards}
+            </div>
+
+            <!-- Infotext -->
+            ${cachedInfoText ? `
+            <div class="info-banner-container">
+                <div class="info-banner">
+                    ${cachedInfoText}
+                </div>
+            </div>
+            ` : ''}
+
+        </div>
+
+    </body>
+    </html>
+    `);
+});
+
 app.get('/update', async (req, res) => {
     const { user, status, bis } = req.query;
     const person = cachedData.find(r => r.n === user);
