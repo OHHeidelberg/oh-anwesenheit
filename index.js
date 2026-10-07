@@ -814,16 +814,38 @@ app.get('/update', async (req, res) => {
             feier: ["Mit Christine feiern", ":tada:"]
         };
         let [text, emoji] = map[status] || ["Im Büro", ":office:"];
-        let expiration = 0;
-        if (bis) {
-            const [hours, minutes] = bis.split(':');
-            const berlin = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Berlin"}));
-            let target = new Date(berlin); target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-            if (target < berlin) target.setDate(target.getDate() + 1);
-            expiration = Math.floor(Date.now() / 1000) + Math.floor((target - berlin) / 1000);
-        }
+let expiration = 0;
+let displayText = text;
+
+if (bis) {
+    const [hours, minutes] = bis.split(':');
+
+    const berlin = new Date(
+        new Date().toLocaleString("en-US", {
+            timeZone: "Europe/Berlin"
+        })
+    );
+
+    let target = new Date(berlin);
+    target.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+    // Wenn die Uhrzeit bereits vorbei ist,
+    // gilt sie für den nächsten Tag
+    if (target <= berlin) {
+        target.setDate(target.getDate() + 1);
+    }
+
+    expiration = Math.floor(Date.now() / 1000) +
+                 Math.floor((target - berlin) / 1000);
+
+    // Endzeit im sichtbaren Status anzeigen
+    displayText = `${text} bis ${hours}:${minutes} Uhr`;
+}
+        
+
+
         try {
-            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: text, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
+            await axios.post('https://slack.com/api/users.profile.set', { user: person.id.trim(), profile: { status_text: displaytext, status_emoji: emoji, status_expiration: expiration } }, { headers: h });
             await updateData();
         } catch (e) {}
     }
