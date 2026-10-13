@@ -86,12 +86,27 @@ const htmlHead = `
             localStorage.setItem('theme', next);
         }
 
+        // Signatur aus Namen, Status und Infotext - nur wenn sie sich ändert, wird neu geladen
+        function pageSignature(root) {
+            const cards = Array.from(root.querySelectorAll('.card')).map(function(c) {
+                const n = c.querySelector('.name-label');
+                const b = c.querySelector('.status-badge');
+                return (n ? n.textContent : '') + '|' + (b ? b.className + ':' + b.textContent : '');
+            }).join('||');
+            const info = root.querySelector('.info-text');
+            const inp = root.querySelector('input[name="infoText"]');
+            return cards + '##' + (info ? info.textContent : '') + '##' + (inp ? inp.getAttribute('value') : '');
+        }
+
         async function checkAndReload() {
             if (window.embedOpen) return;
             if (!navigator.onLine) return;
             try {
-                const response = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
-                if (response.ok) window.location.reload();
+                const response = await fetch(window.location.href, { cache: 'no-store' });
+                if (!response.ok) return;
+                const html = await response.text();
+                const fresh = new DOMParser().parseFromString(html, 'text/html');
+                if (pageSignature(fresh) !== pageSignature(document)) window.location.reload();
             } catch (e) {}
         }
         setInterval(() => { if (!document.hidden) checkAndReload(); }, 60000);
