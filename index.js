@@ -18,14 +18,39 @@ const fs = require('fs');
 const INFO_FILE = './info.json';
 
 let cachedData = [];
-let cachedInfoText = ""; 
 let pauseStorage = {}; 
 let urlaubMap = {}; // Speichert das Urlaubs-Enddatum pro Name
 let krankMap = {};  // Speichert das Krank-Datum (Ende bzw. Start) pro Name
 
+let defaultInfoText = "Das ist kein Touchscreen"; // Fallback, wird aus dem Sheet überschrieben
+let cachedInfoText = defaultInfoText;
+let infoCustom = false;  // true = manuell geänderter Text ist aktiv
+let infoDate = "";       // Datum (Berlin) der letzten manuellen Änderung
+
+function berlinDate() {
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }); // YYYY-MM-DD
+}
+
+function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function resetInfoText() {
+    infoCustom = false;
+    infoDate = "";
+    cachedInfoText = defaultInfoText;
+    try { if (fs.existsSync(INFO_FILE)) fs.unlinkSync(INFO_FILE); } catch (e) {}
+}
+
+// Beim Start: gespeicherten Text nur übernehmen, wenn er von heute ist
 try {
     if (fs.existsSync(INFO_FILE)) {
-        cachedInfoText = JSON.parse(fs.readFileSync(INFO_FILE, 'utf8')).text;
+        const saved = JSON.parse(fs.readFileSync(INFO_FILE, 'utf8'));
+        if (saved.text && saved.date === berlinDate()) {
+            cachedInfoText = saved.text;
+            infoCustom = true;
+            infoDate = saved.date;
+        }
     }
 } catch (e) { console.log("Keine Info-Datei gefunden"); }
 
@@ -620,7 +645,11 @@ async function updateData() {
             };
         }));
         const info = await axios.get(INFO_URL).catch(() => null);
-        if (info) cachedInfoText = info.data.split('\n')[0];
+        if (info) {
+            const line = info.data.split('\n')[0].trim();
+            if (line) defaultInfoText = line;
+        }
+        if (!infoCustom) cachedInfoText = defaultInfoText;
     } catch (e) {}
 }
 
@@ -633,6 +662,9 @@ setInterval(async () => {
     const nowObj = new Date(berlinTime);
     const now = Math.floor(Date.now() / 1000);
     const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
+
+    // Infotext täglich um 0:00 Uhr (Berlin) auf die Standardnachricht zurücksetzen
+    if (infoCustom && infoDate !== berlinDate()) resetInfoText();
 
     // Statusse mit Endzeit automatisch zurücksetzen
     for (const userId of Object.keys(pauseStorage)) {
@@ -724,10 +756,17 @@ updateData();
 app.use(express.urlencoded({ extended: true }));
 
 app.post('/update-info', (req, res) => {
-    cachedInfoText = req.body.infoText;
-    try {
-        fs.writeFileSync(INFO_FILE, JSON.stringify({ text: cachedInfoText }));
-    } catch (e) {}
+    const text = (req.body.infoText || "").trim();
+    if (!text || text === defaultInfoText) {
+        resetInfoText();
+    } else {
+        cachedInfoText = text;
+        infoCustom = true;
+        infoDate = berlinDate();
+        try {
+            fs.writeFileSync(INFO_FILE, JSON.stringify({ text, date: infoDate }));
+        } catch (e) {}
+    }
     res.redirect('back');
 });
 
@@ -771,7 +810,7 @@ app.get('/dashboard', (req, res) => {
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
             </form>
             <form action="/update-info" method="POST" class="dash-part" style="margin-top: 10px; display: flex; gap: 8px;">
-                <input type="text" name="infoText" value="${cachedInfoText}" placeholder="Info-Text für Empfang..." style="flex: 1;">
+                <input type="text" name="infoText" value="${escapeHtml(cachedInfoText)}" placeholder="Info-Text für Empfang..." style="flex: 1;">
                 <button type="submit" class="btn-update">Info setzen</button>
             </form>
         </div>
@@ -826,7 +865,7 @@ app.get('/admin99', (req, res) => {
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
             </form>
             <form action="/update-info" method="POST" class="dash-part" style="margin-top: 10px; display: flex; gap: 8px;">
-                <input type="text" name="infoText" value="${cachedInfoText}" placeholder="Info-Text für Empfang..." style="flex: 1;">
+                <input type="text" name="infoText" value="${escapeHtml(cachedInfoText)}" placeholder="Info-Text für Empfang..." style="flex: 1;">
                 <button type="submit" class="btn-update">Info setzen</button>
             </form>
         </div>
@@ -884,7 +923,7 @@ app.get('/empfang', (req, res) => {
             ${cachedInfoText ? `
             <div class="info-banner-container">
                 <div class="info-banner">
-                    ${cachedInfoText}
+                    ${escapeHtml(cachedInfoText)}
                 </div>
             </div>
             ` : ''}
