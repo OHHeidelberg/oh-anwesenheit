@@ -322,6 +322,14 @@ const styles = `
   .info-banner-container { display: flex; align-items: center; gap: 8px; height: 6vh; flex-shrink: 0; }
   .info-banner { flex: 1; height: 100%; background: linear-gradient(135deg, #004a99, #007aff); color: white; display: flex; align-items: center; justify-content: center; border-radius: 12px; font-size: clamp(1.1rem, 1.5vw, 1.4rem); font-weight: bold; }
 
+  /* Lauftext für den Infotext: nach jedem Laden 2x durchlaufen, danach steht der Text mittig */
+  .info-banner { overflow: hidden; }
+  .info-text { display: inline-block; white-space: nowrap; margin: 0 auto; animation: info-marquee var(--dur, 15s) linear 2; }
+  @keyframes info-marquee {
+    from { transform: translateX(calc(50vw + 50%)); }
+    to { transform: translateX(calc(-50vw - 50%)); }
+  }
+
   @media (max-width: 768px) {
     html, body { overflow: auto; height: auto; }
     .container { overflow: visible; height: auto; }
@@ -879,6 +887,9 @@ app.get('/admin99', (req, res) => {
 
 app.get('/empfang', (req, res) => {
 
+    // Dauer eines Durchlaufs in Sekunden (länger bei langem Text, max. 25s, damit 2 Durchläufe in 60s passen)
+    const infoDur = Math.min(25, Math.max(10, 8 + (cachedInfoText || '').length * 0.12));
+
     // Nur "Im Büro" wird angezeigt, alles andere erscheint als "Abwesend"
     const empfangData = cachedData.map(p => {
         if (p.buero) return p;
@@ -923,7 +934,7 @@ app.get('/empfang', (req, res) => {
             ${cachedInfoText ? `
             <div class="info-banner-container">
                 <div class="info-banner">
-                    ${escapeHtml(cachedInfoText)}
+                    <span class="info-text" style="--dur: ${infoDur}s;">${escapeHtml(cachedInfoText)}</span>
                 </div>
             </div>
             ` : ''}
