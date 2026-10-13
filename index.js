@@ -521,7 +521,7 @@ async function getFullStatus(id, name) {
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
-            res.c="bg-active"; res.r=1; res.e="🏢"; 
+            res.c="bg-active"; res.r=1; res.e="🏢"; res.buero = true;
         } else if (lowTxt.includes("home")) { 
             res.c="bg-home"; res.r=3; res.e="🏡"; 
         } else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { 
@@ -840,7 +840,14 @@ app.get('/admin99', (req, res) => {
 
 app.get('/empfang', (req, res) => {
 
-    const cards = [...cachedData]
+    // Nur "Im Büro" wird angezeigt, alles andere erscheint als "Abwesend"
+    const empfangData = cachedData.map(p => {
+        if (p.buero) return p;
+        return { ...p, t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
+    });
+
+    // Kein Tooltip in der Empfangsansicht
+    const cards = empfangData
         .sort((a, b) => a.r - b.r || a.n.localeCompare(b.n))
         .map(p => {
             return `
@@ -848,7 +855,6 @@ app.get('/empfang', (req, res) => {
                 ${renderAvatar(p)}
                 <span class="name-label">${p.n}</span>
                 <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-                ${renderTooltip(p)}
             </div>`;
         }).join('');
 
