@@ -976,7 +976,7 @@ app.get('/empfang', (req, res) => {
             ${cachedInfoText ? `
             <div class="info-banner-container">
                 <div class="info-banner">
-                    <span class="info-text" style="--dur: ${infoDur}s;">${escapeHtml(cachedInfoText)}</span>
+                    <span class="info-text" data-custom="${infoCustom ? '1' : '0'}" style="--dur: ${infoDur}s;">${escapeHtml(cachedInfoText)}</span>
                 </div>
             </div>
             ` : ''}
@@ -1013,6 +1013,8 @@ app.get('/empfang', (req, res) => {
         el.addEventListener('animationend', endAnnounce);
 
         function check() {
+            // Große Anzeige nur, wenn der Infotext vom Standardtext abweicht
+            if (el.getAttribute('data-custom') !== '1') return;
             var now = Date.now();
             var slot = Math.floor(now / SLOT);
             if (now - slot * SLOT > 60000) return;  // nur in der ersten Minute eines Fensters
