@@ -351,6 +351,26 @@ const styles = `
     to { transform: translateX(calc(-50vw - 50%)); }
   }
 
+  /* Ankündigungs-Modus (nur /empfang): Infotext groß und leuchtend, abwesende Karten schrumpfen auf das graue Foto */
+  .announce .grid { flex: 0 1 auto; max-height: 55vh; grid-template-columns: repeat(auto-fill, minmax(5.5vw, 1fr)); grid-auto-rows: auto; align-content: start; }
+  .announce .card:not(.absent) { grid-column: span 2; min-height: 120px; }
+  .announce .card.absent { align-self: start; justify-content: center; padding: 3px; min-height: 0; height: 9vh; }
+  .announce .card.absent .name-label, .announce .card.absent .status-badge { display: none; }
+  .announce .card.absent .avatar-container { margin-bottom: 0; }
+  .announce .info-banner-container { flex: 1 1 0; height: auto; min-height: 25vh; }
+  .announce .info-banner {
+    font-size: clamp(3rem, 14vh, 9rem);
+    background: linear-gradient(135deg, #0a2a6e, #007aff, #5856d6, #007aff);
+    background-size: 300% 300%;
+    animation: announce-bg 6s ease infinite, announce-glow 1.6s ease-in-out infinite;
+  }
+  .announce .info-text { text-shadow: 0 0 12px #ffffff, 0 0 28px #5ac8fa, 0 0 56px #0a84ff; }
+  @keyframes announce-bg { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  @keyframes announce-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(10, 132, 255, 0.6); }
+    50% { box-shadow: 0 0 60px rgba(90, 200, 250, 1); }
+  }
+
   @media (max-width: 768px) {
     html, body { overflow: auto; height: auto; }
     .container { overflow: visible; height: auto; }
@@ -923,7 +943,7 @@ app.get('/empfang', (req, res) => {
         .sort((a, b) => a.r - b.r || a.n.localeCompare(b.n))
         .map(p => {
             return `
-            <div class="card">
+            <div class="card${p.dim ? ' absent' : ''}">
                 ${renderAvatar(p)}
                 <span class="name-label">${p.n}</span>
                 <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
@@ -962,6 +982,49 @@ app.get('/empfang', (req, res) => {
             ` : ''}
 
         </div>
+
+    <script>
+    (function() {
+        var el = document.querySelector('.info-text');
+        if (!el) return;
+        var SLOT = 300000;   // alle 5 Minuten (zur vollen 5-Minuten-Marke)
+        var SPEED = 280;     // Lauftext-Geschwindigkeit in Pixel pro Sekunde
+        var announcing = false;
+
+        function endAnnounce() {
+            if (!announcing) return;
+            announcing = false;
+            document.body.classList.remove('announce');
+            el.style.animation = 'none';
+        }
+
+        function startAnnounce() {
+            if (announcing) return;
+            announcing = true;
+            document.body.classList.add('announce');
+            el.style.animation = 'none';
+            var w = el.getBoundingClientRect().width;
+            var dur = Math.max(8, (window.innerWidth + w) / SPEED);
+            void el.offsetWidth;
+            el.style.animation = 'info-marquee ' + dur + 's linear 2';
+            setTimeout(endAnnounce, dur * 2000 + 3000);
+        }
+
+        el.addEventListener('animationend', endAnnounce);
+
+        function check() {
+            var now = Date.now();
+            var slot = Math.floor(now / SLOT);
+            if (now - slot * SLOT > 60000) return;  // nur in der ersten Minute eines Fensters
+            var last = 0;
+            try { last = parseInt(localStorage.getItem('lastAnnounceSlot') || '0', 10); } catch (e) {}
+            if (slot === last) return;
+            try { localStorage.setItem('lastAnnounceSlot', String(slot)); } catch (e) {}
+            startAnnounce();
+        }
+        setInterval(check, 5000);
+    })();
+    </script>
 
     </body>
     </html>
