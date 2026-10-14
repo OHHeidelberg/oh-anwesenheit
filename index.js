@@ -279,6 +279,7 @@ const styles = `
     display: block; 
     flex-shrink: 0;
   }
+  .avatar-dim { filter: grayscale(1); opacity: 0.45; }
   .avatar { width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--border-color); object-fit: cover; background: #8e8e93; }
   .avatar-placeholder { width: 100%; height: 100%; border-radius: 50%; background: #8e8e93; color: #fff; display: flex; align-items: center; justify-content: center; font-size: clamp(1rem, 1.2vw, 1.5rem); font-weight: bold; }
   
@@ -362,7 +363,8 @@ function renderAvatar(person) {
     const hasPhoto = person.p && person.p.includes('http') && !person.p.includes('placeholder');
     const firstLetter = person.n ? person.n.charAt(0) : '?';
     const content = hasPhoto ? `<img src="${person.p}" class="avatar" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="avatar-placeholder" style="display:none;">${firstLetter}</div>` : `<div class="avatar-placeholder">${firstLetter}</div>`;
-    return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="avatar-container">${content}</a>` : `<div class="avatar-container">${content}</div>`;
+    const cls = person.dim ? 'avatar-container avatar-dim' : 'avatar-container';
+    return person.id && person.id !== "kein" ? `<a href="slack://user?id=${person.id.trim()}" class="${cls}">${content}</a>` : `<div class="${cls}">${content}</div>`;
 }
 
 // Hilfsfunktion zum Formatieren der Kernpräsenzzeit pro Tag
@@ -913,7 +915,7 @@ app.get('/empfang', (req, res) => {
     // Nur "Im Büro" wird angezeigt, alles andere erscheint als "Abwesend"
     const empfangData = cachedData.map(p => {
         if (p.buero) return p;
-        return { ...p, t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
+        return { ...p, t: "Abwesend", e: "⚪", c: "bg-away", r: 8, dim: true };
     });
 
     // Kein Tooltip in der Empfangsansicht
