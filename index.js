@@ -73,11 +73,11 @@ const htmlHead = `
         })();
 
         function applyBurnInProtection() {
-            const shiftX = Math.floor(Math.random() * 3) - 1;
-            const shiftY = Math.floor(Math.random() * 3) - 1;
+            const shiftX = Math.floor(Math.random() * 7) - 3;
+            const shiftY = Math.floor(Math.random() * 7) - 3;
             document.body.style.transform = "translate(" + shiftX + "px, " + shiftY + "px)";
         }
-        setInterval(applyBurnInProtection, 300000); 
+        setInterval(applyBurnInProtection, 60000); 
 
         function toggleTheme() {
             const current = document.documentElement.getAttribute('data-theme');
