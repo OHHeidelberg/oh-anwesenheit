@@ -54,11 +54,15 @@ try {
     }
 } catch (e) { console.log("Keine Info-Datei gefunden"); }
 
+// Neue Version bei jedem Serverstart -> offene Seiten laden sich danach einmal neu
+const SERVER_VERSION = Date.now().toString();
+
 const htmlHead = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>OH Dashboard</title>
+    <meta name="server-version" content="${SERVER_VERSION}">
     <script>
         (function() {
             const savedTheme = localStorage.getItem('theme');
@@ -95,7 +99,8 @@ const htmlHead = `
             }).join('||');
             const info = root.querySelector('.info-text');
             const inp = root.querySelector('input[name="infoText"]');
-            return cards + '##' + (info ? info.textContent : '') + '##' + (inp ? inp.getAttribute('value') : '');
+            const ver = root.querySelector('meta[name="server-version"]');
+            return cards + '##' + (info ? info.textContent : '') + '##' + (inp ? inp.getAttribute('value') : '') + '##' + (ver ? ver.getAttribute('content') : '');
         }
 
         async function checkAndReload() {
