@@ -840,6 +840,7 @@ app.get('/dashboard', (req, res) => {
                 <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
+                <a href="/ticket" class="nav-btn" onclick="return openEmbed(this)">🔧 Hausmeister</a>
                 <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️ Serverproblem</a>
                 <a id="embedExternal" class="nav-btn embed-only" href="#" target="_blank" rel="noopener">↗ Neuer Tab</a>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
@@ -855,6 +856,7 @@ app.get('/dashboard', (req, res) => {
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
+                    <option value="urlaub">🌴 Urlaub</option>
                     <option value="weg">🌊 Abwesend</option>
                 </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
@@ -893,6 +895,7 @@ app.get('/admin99', (req, res) => {
                 <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
+                <a href="/ticket" class="nav-btn" onclick="return openEmbed(this)">🔧 Hausmeister</a>
                 <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
                 <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
                 <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
@@ -910,6 +913,7 @@ app.get('/admin99', (req, res) => {
                     <option value="unterwegs">🚗 Unterwegs</option>
                     <option value="uni">🎓 Uni</option>
                     <option value="pause">🥪 Pause</option>
+                    <option value="urlaub">🌴 Urlaub</option>
                     <option value="weg">🌊 Abwesend</option>
                 </select>
                 <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
@@ -1046,6 +1050,7 @@ app.get('/update', async (req, res) => {
             unterwegs: ["Unterwegs", ":car:"], 
             uni: ["Uni", ":mortar_board:"], 
             pause: ["Pause", ":sandwich:"], 
+            urlaub: ["Urlaub", ":palm_tree:"],
             weg: ["Abwesend", ":wave:"],
             feier: ["Mit Christine feiern", ":tada:"]
         };
@@ -1132,6 +1137,586 @@ try {
 
     res.redirect('back');
 });
+
+// ===================== HAUSMEISTER-TICKETSYSTEM =====================
+// Eingabemaske:      /ticket            (Button "Hausmeister" im Dashboard)
+// Status abrufen:    /ticket/status?nr=HM-XXXXXX
+// Hausmeister:       /hausmeister       (Übersicht + Status per Klick)
+//
+// Umgebungsvariablen (alle optional):
+//   TICKET_SHEET_URL    Web-App-URL des Google-Apps-Scripts (Tickets werden dauerhaft in einem Google Sheet gespeichert)
+//   TICKET_SHEET_TOKEN  Geheimes Passwort, identisch mit TOKEN im Apps Script
+//   TICKETS_FILE        Lokale Sicherungskopie / Zwischenspeicher (Standard ./tickets.json)
+//   BASE_URL         Öffentliche Adresse des Servers für Links in E-Mails (z. B. https://mein-dashboard.onrender.com)
+//   SMTP_HOST, SMTP_PORT, SMTP_SECURE (true/false), SMTP_USER, SMTP_PASS   -> E-Mail-Versand (benötigt "npm install nodemailer")
+//   MAIL_FROM        Absenderadresse (Standard: SMTP_USER)
+//   HAUSMEISTER_MAIL E-Mail des Hausmeisters: bekommt neue Aufträge und ist Antwortadresse für Rückfragen
+
+const crypto = require('crypto');
+const TICKETS_FILE = process.env.TICKETS_FILE || './tickets.json';
+const TICKET_STATI = ['Warteschlange', 'In Arbeit', 'Erledigt', 'Rückfrage offen'];
+const TICKET_STATUS_CLASS = {
+    'Warteschlange': 'st-wait',
+    'In Arbeit': 'st-work',
+    'Erledigt': 'st-done',
+    'Rückfrage offen': 'st-question'
+};
+
+let tickets = [];
+try {
+    if (fs.existsSync(TICKETS_FILE)) tickets = JSON.parse(fs.readFileSync(TICKETS_FILE, 'utf8'));
+} catch (e) {
+    console.log("Tickets konnten nicht geladen werden:", e.message);
+    tickets = [];
+}
+
+function saveTickets() {
+    try {
+        fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2));
+    } catch (e) {
+        console.log("Tickets konnten nicht gespeichert werden:", e.message);
+    }
+}
+
+// ---------- Dauerhafte Speicherung im Google Sheet (über Apps Script) ----------
+const TICKET_SHEET_URL = process.env.TICKET_SHEET_URL || '';
+const TICKET_SHEET_TOKEN = process.env.TICKET_SHEET_TOKEN || '';
+const sheetEnabled = !!(TICKET_SHEET_URL && TICKET_SHEET_TOKEN);
+const unsynced = new Set(); // Tickets, die noch nicht erfolgreich ins Sheet geschrieben wurden
+let ticketsVersion = 0;     // zählt lokale Änderungen (schützt vor veralteten Abfrageergebnissen)
+
+function normalizeSheetTicket(r) {
+    if (!r || !String(r.nr || '').trim()) return null;
+    const status = TICKET_STATI.find(s => s.toLowerCase() === String(r.status || '').trim().toLowerCase()) || 'Warteschlange';
+
+    let history = [];
+    try { history = JSON.parse(r.history || '[]'); } catch (e) { history = []; }
+    if (!Array.isArray(history)) history = [];
+    history = history.filter(h => h && h.ts && h.status);
+
+    const createdAt = String(r.createdAt || '').trim() || (history[0] && history[0].ts) || new Date().toISOString();
+    if (!history.length) history = [{ ts: createdAt, status, note: 'Auftrag eingegangen' }];
+
+    // Datum: auch von Hand eingetragenes TT.MM.JJJJ akzeptieren
+    let bis = String(r.bis || '').trim();
+    const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(bis);
+    if (m) bis = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(bis)) bis = '';
+
+    return {
+        nr: normalizeNr(r.nr),
+        createdAt,
+        auftraggeber: String(r.auftraggeber || ''),
+        titel: String(r.titel || ''),
+        beschreibung: String(r.beschreibung || ''),
+        bis,
+        ort: String(r.ort || ''),
+        adresse: String(r.adresse || ''),
+        email: String(r.email || ''),
+        status,
+        history
+    };
+}
+
+// Ticket ins Sheet schreiben (neu: ganze Zeile, bestehend: nur Status/Anmerkung/Verlauf)
+async function pushTicket(ticket) {
+    if (!sheetEnabled || !ticket) return;
+    unsynced.add(ticket.nr);
+    try {
+        const last = ticket.history[ticket.history.length - 1] || {};
+        const payload = { token: TICKET_SHEET_TOKEN, action: 'save', ticket: { ...ticket, note: last.note || '' } };
+        const r = await axios.post(TICKET_SHEET_URL, JSON.stringify(payload), {
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            timeout: 20000,
+            maxRedirects: 5
+        });
+        if (r.data && r.data.ok) {
+            unsynced.delete(ticket.nr);
+        } else {
+            console.log("Ticket konnte nicht ins Sheet geschrieben werden:", (r.data && r.data.error) || "ungültige Antwort (Bereitstellung des Apps Scripts prüfen: Zugriff = Jeder)");
+        }
+    } catch (e) {
+        console.log("Ticket-Übertragung ins Sheet fehlgeschlagen:", e.message);
+    }
+}
+
+// Tickets aus dem Sheet laden (so werden auch Änderungen von Hand übernommen)
+async function loadTicketsFromSheet() {
+    if (!sheetEnabled) return;
+    const versionAtStart = ticketsVersion;
+    try {
+        const r = await axios.get(TICKET_SHEET_URL, {
+            params: { token: TICKET_SHEET_TOKEN, action: 'list' },
+            timeout: 20000,
+            maxRedirects: 5
+        });
+        if (!r.data || !r.data.ok || !Array.isArray(r.data.tickets)) {
+            console.log("Tickets konnten nicht aus dem Sheet gelesen werden:", (r.data && r.data.error) || "ungültige Antwort (Bereitstellung des Apps Scripts prüfen)");
+            return;
+        }
+        // Wurde währenddessen lokal etwas geändert, ist das Ergebnis veraltet -> beim nächsten Durchlauf erneut
+        if (ticketsVersion !== versionAtStart) return;
+
+        const fromSheet = r.data.tickets.map(normalizeSheetTicket).filter(Boolean).filter(t => !unsynced.has(t.nr));
+        const localPending = tickets.filter(t => unsynced.has(t.nr));
+        tickets = [...fromSheet, ...localPending];
+        saveTickets();
+
+        // Fehlgeschlagene Übertragungen erneut versuchen
+        for (const nr of [...unsynced]) {
+            const t = tickets.find(x => x.nr === nr);
+            if (t) await pushTicket(t); else unsynced.delete(nr);
+        }
+    } catch (e) {
+        console.log("Ticket-Abfrage aus dem Sheet fehlgeschlagen:", e.message);
+    }
+}
+
+// E-Mail-Versand (nur aktiv, wenn SMTP_HOST gesetzt und nodemailer installiert ist)
+let mailer = null;
+try {
+    if (process.env.SMTP_HOST) {
+        const nodemailer = require('nodemailer');
+        mailer = nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: parseInt(process.env.SMTP_PORT || '587', 10),
+            secure: process.env.SMTP_SECURE === 'true',
+            auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
+        });
+    }
+} catch (e) {
+    console.log("E-Mail-Versand nicht verfügbar (nodemailer installiert?):", e.message);
+}
+
+async function sendMail(to, subject, text) {
+    if (!mailer || !to) return;
+    try {
+        await mailer.sendMail({
+            from: process.env.MAIL_FROM || process.env.SMTP_USER,
+            to,
+            replyTo: process.env.HAUSMEISTER_MAIL || undefined,
+            subject,
+            text
+        });
+    } catch (e) {
+        console.log("Fehler beim E-Mail-Versand:", e.message);
+    }
+}
+
+function clip(v, max) {
+    return String(v || '').trim().slice(0, max);
+}
+
+function isValidEmail(m) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m);
+}
+
+// Ticketnummer: HM- plus 6 zufällige Zeichen (nicht erratbar, keine verwechselbaren Zeichen)
+function newTicketNr() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let nr;
+    do {
+        nr = 'HM-';
+        for (let i = 0; i < 6; i++) nr += alphabet[crypto.randomInt(alphabet.length)];
+    } while (tickets.some(t => t.nr === nr));
+    return nr;
+}
+
+function normalizeNr(input) {
+    let n = String(input || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (n && !n.startsWith('HM-')) n = 'HM-' + n.replace(/^HM/, '');
+    return n;
+}
+
+function formatTs(iso) {
+    try {
+        return new Date(iso).toLocaleString('de-DE', {
+            timeZone: 'Europe/Berlin',
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+    } catch (e) { return iso; }
+}
+
+function formatDateLong(str) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || '');
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : (str || '');
+}
+
+function baseUrl(req) {
+    if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/+$/, '');
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    return proto + '://' + req.get('host');
+}
+
+const ticketStyles = `
+<style>
+  :root { --bg:#f2f2f7; --card:#ffffff; --text:#000000; --muted:#6c6c70; --accent:#007aff; --border:#d1d1d6; --input:#ffffff; }
+  [data-theme="dark"] { --bg:#000000; --card:#1c1c1e; --text:#ffffff; --muted:#98989d; --accent:#0a84ff; --border:#38383a; --input:#2c2c2e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  .wrap.wide { max-width: 1100px; }
+  h1 { font-size: 1.4rem; margin: 4px 0 12px; }
+  h2 { font-size: 1.1rem; margin: 0 0 10px; }
+  .box { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  label { display: block; font-weight: 700; font-size: 0.85rem; margin: 12px 0 4px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  input, textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); color: var(--text); font: inherit; }
+  textarea { min-height: 110px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 220px; }
+  .btn { display: inline-block; padding: 10px 16px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; margin-top: 6px; }
+  .btn.secondary { background: var(--border); color: var(--text); }
+  .hint { color: var(--muted); font-size: 0.85rem; }
+  .error { background: rgba(255,69,58,0.15); color: #ff453a; padding: 10px; border-radius: 10px; margin-bottom: 12px; font-weight: 700; }
+  .nr { font-size: 2rem; font-weight: 900; letter-spacing: 2px; text-align: center; padding: 12px; background: var(--bg); border-radius: 12px; margin: 12px 0; user-select: all; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 0.85rem; white-space: nowrap; }
+  .st-wait { background: rgba(142,142,147,0.25); color: #8e8e93; }
+  .st-work { background: rgba(255,159,10,0.25); color: #d98200; }
+  .st-done { background: rgba(50,215,75,0.22); color: #25a244; }
+  .st-question { background: rgba(255,69,58,0.2); color: #ff453a; }
+  .timeline { list-style: none; padding: 0; margin: 0; }
+  .timeline li { padding: 8px 0; border-top: 1px solid var(--border); }
+  .timeline li:first-child { border-top: none; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tab { padding: 8px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 700; }
+  .tab.active { border-color: var(--accent); color: var(--accent); }
+  .ticket { border-left: 6px solid var(--border); }
+  .ticket.b-st-wait { border-left-color: #8e8e93; }
+  .ticket.b-st-work { border-left-color: #ff9f0a; }
+  .ticket.b-st-done { border-left-color: #32d74b; }
+  .ticket.b-st-question { border-left-color: #ff453a; }
+  .t-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+  .t-title { font-weight: 800; font-size: 1.1rem; }
+  .t-meta { color: var(--muted); font-size: 0.85rem; margin: 4px 0 8px; }
+  .t-desc { white-space: pre-wrap; margin: 8px 0; }
+  .t-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 14px; font-size: 0.9rem; margin: 8px 0; }
+  .overdue { color: #ff453a; font-weight: 800; }
+  .st-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 8px; }
+  .st-btn { padding: 12px 8px; border-radius: 10px; border: 2px solid transparent; background: var(--input); color: var(--text); font: inherit; font-weight: 800; cursor: pointer; }
+  .st-btn.current { outline: 3px solid var(--accent); }
+  a { color: var(--accent); }
+</style>`;
+
+function ticketPage(title, bodyHtml, wide) {
+    return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>${escapeHtml(title)}</title>
+<script>
+(function() {
+    var t = null;
+    try { t = localStorage.getItem('theme'); } catch (e) {}
+    if (t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+})();
+</script>
+${ticketStyles}
+</head>
+<body>
+<div class="wrap${wide ? ' wide' : ''}">${bodyHtml}</div>
+</body>
+</html>`;
+}
+
+function renderTicketForm(values, error) {
+    values = values || {};
+    const v = k => escapeHtml(values[k] || '');
+    return ticketPage('Hausmeisterauftrag', `
+        <h1>🔧 Hausmeister</h1>
+
+        <div class="box">
+            <h2>Status eines Auftrags abrufen</h2>
+            <form method="GET" action="/ticket/status" class="row" style="align-items: flex-end;">
+                <div>
+                    <label>Ticketnummer</label>
+                    <input name="nr" placeholder="z. B. HM-7K4Q2X" required autocomplete="off">
+                </div>
+                <div style="flex: 0 0 auto;">
+                    <button type="submit" class="btn">Status anzeigen</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="box">
+            <h2>Neuer Auftrag</h2>
+            ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+            <form method="POST" action="/ticket/neu">
+                <label>Auftraggeber *</label>
+                <input name="auftraggeber" value="${v('auftraggeber')}" required maxlength="100">
+
+                <label>Titel *</label>
+                <input name="titel" value="${v('titel')}" required maxlength="150">
+
+                <label>Beschreibung *</label>
+                <textarea name="beschreibung" required maxlength="3000">${v('beschreibung')}</textarea>
+
+                <div class="row">
+                    <div>
+                        <label>Bitte erledigen bis <span class="opt">(optional)</span></label>
+                        <input type="date" name="bis" min="${berlinDate()}" value="${v('bis')}">
+                    </div>
+                    <div>
+                        <label>E-Mail für Rückfragen und Statusmeldungen *</label>
+                        <input type="email" name="email" value="${v('email')}" required maxlength="200">
+                    </div>
+                </div>
+
+                <label>Ort *</label>
+                <input name="ort" value="${v('ort')}" placeholder="z. B. Gebäude A, Raum 12" required maxlength="150">
+
+                <label>Adresse <span class="opt">(optional)</span></label>
+                <input name="adresse" value="${v('adresse')}" placeholder="Straße, PLZ Ort" maxlength="200">
+
+                <div style="position: absolute; left: -9999px;" aria-hidden="true">
+                    <input name="website" tabindex="-1" autocomplete="off">
+                </div>
+
+                <p class="hint">* Pflichtfeld</p>
+                <button type="submit" class="btn">Auftrag absenden</button>
+            </form>
+        </div>
+    `);
+}
+
+app.get('/ticket', (req, res) => {
+    res.send(renderTicketForm());
+});
+
+app.post('/ticket/neu', (req, res) => {
+    const b = req.body || {};
+    if (b.website) return res.redirect('/ticket'); // Honeypot gegen Spam-Bots
+
+    const data = {
+        auftraggeber: clip(b.auftraggeber, 100),
+        titel: clip(b.titel, 150),
+        beschreibung: clip(b.beschreibung, 3000),
+        bis: /^\d{4}-\d{2}-\d{2}$/.test(b.bis || '') ? b.bis : '',
+        ort: clip(b.ort, 150),
+        adresse: clip(b.adresse, 200),
+        email: clip(b.email, 200)
+    };
+
+    if (!data.auftraggeber || !data.titel || !data.beschreibung || !data.ort) {
+        return res.status(400).send(renderTicketForm(data, 'Bitte alle Pflichtfelder ausfüllen.'));
+    }
+    if (!isValidEmail(data.email)) {
+        return res.status(400).send(renderTicketForm(data, 'Bitte eine gültige E-Mail-Adresse angeben.'));
+    }
+
+    const now = new Date().toISOString();
+    const ticket = {
+        nr: newTicketNr(),
+        createdAt: now,
+        ...data,
+        status: 'Warteschlange',
+        history: [{ ts: now, status: 'Warteschlange', note: 'Auftrag eingegangen' }]
+    };
+    tickets.push(ticket);
+    ticketsVersion++;
+    saveTickets();
+    pushTicket(ticket);
+
+    const base = baseUrl(req);
+    const statusLink = `${base}/ticket/status?nr=${encodeURIComponent(ticket.nr)}`;
+
+    sendMail(ticket.email, `Hausmeisterauftrag ${ticket.nr} eingegangen`,
+        `Hallo ${ticket.auftraggeber},\n\n` +
+        `Ihr Auftrag wurde aufgenommen.\n\n` +
+        `Ticketnummer: ${ticket.nr}\n` +
+        `Titel: ${ticket.titel}\n` +
+        `Status: ${ticket.status}\n\n` +
+        `Status abrufen: ${statusLink}\n\n` +
+        `Bei Statusänderungen und Rückfragen melden wir uns an diese Adresse.`);
+
+    if (process.env.HAUSMEISTER_MAIL) {
+        sendMail(process.env.HAUSMEISTER_MAIL, `Neuer Auftrag ${ticket.nr}: ${ticket.titel}`,
+            `Neuer Hausmeisterauftrag\n\n` +
+            `Ticketnummer: ${ticket.nr}\n` +
+            `Auftraggeber: ${ticket.auftraggeber} (${ticket.email})\n` +
+            `Titel: ${ticket.titel}\n` +
+            `Ort: ${ticket.ort}${ticket.adresse ? ', ' + ticket.adresse : ''}\n` +
+            `Bitte erledigen bis: ${ticket.bis ? formatDateLong(ticket.bis) : 'keine Angabe'}\n\n` +
+            `${ticket.beschreibung}\n\n` +
+            `Übersicht: ${base}/hausmeister`);
+    }
+
+    res.send(ticketPage('Auftrag eingegangen', `
+        <h1>✅ Auftrag eingegangen</h1>
+        <div class="box">
+            <p>Ihre Ticketnummer:</p>
+            <div class="nr">${escapeHtml(ticket.nr)}</div>
+            <p>Bitte notieren Sie sich die Nummer. Damit können Sie den Status jederzeit unter „Hausmeister“ abrufen.</p>
+            ${mailer ? `<p class="hint">Eine Bestätigung wird an ${escapeHtml(ticket.email)} gesendet.</p>` : ''}
+            <a class="btn" href="/ticket/status?nr=${encodeURIComponent(ticket.nr)}">Status anzeigen</a>
+            <a class="btn secondary" href="/ticket">Neuer Auftrag</a>
+        </div>
+    `));
+});
+
+app.get('/ticket/status', (req, res) => {
+    const nr = normalizeNr(req.query.nr);
+    const t = tickets.find(x => x.nr === nr);
+
+    if (!t) {
+        return res.status(404).send(ticketPage('Ticket nicht gefunden', `
+            <h1>🔧 Hausmeister</h1>
+            <div class="box">
+                <div class="error">Zu dieser Ticketnummer wurde kein Auftrag gefunden.</div>
+                <p class="hint">Bitte die Nummer prüfen (Format: HM-XXXXXX).</p>
+                <a class="btn" href="/ticket">Zurück</a>
+            </div>
+        `));
+    }
+
+    const history = [...t.history].reverse().map(h => `
+        <li>
+            <span class="badge ${TICKET_STATUS_CLASS[h.status] || 'st-wait'}">${escapeHtml(h.status)}</span>
+            <span class="hint">${escapeHtml(formatTs(h.ts))}</span>
+            ${h.note ? `<div>${escapeHtml(h.note)}</div>` : ''}
+        </li>`).join('');
+
+    res.send(ticketPage('Ticket ' + t.nr, `
+        <h1>🔧 Auftrag ${escapeHtml(t.nr)}</h1>
+        <div class="box">
+            <span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}" style="font-size: 1.1rem;">${escapeHtml(t.status)}</span>
+            <h2 style="margin-top: 12px;">${escapeHtml(t.titel)}</h2>
+            <div class="t-desc">${escapeHtml(t.beschreibung)}</div>
+            <div class="t-info">
+                <div><b>Auftraggeber:</b> ${escapeHtml(t.auftraggeber)}</div>
+                <div><b>Ort:</b> ${escapeHtml(t.ort)}${t.adresse ? ', ' + escapeHtml(t.adresse) : ''}</div>
+                <div><b>Bitte erledigen bis:</b> ${t.bis ? escapeHtml(formatDateLong(t.bis)) : 'keine Angabe'}</div>
+                <div><b>Eingegangen:</b> ${escapeHtml(formatTs(t.createdAt))}</div>
+            </div>
+        </div>
+        <div class="box">
+            <h2>Verlauf</h2>
+            <ul class="timeline">${history}</ul>
+        </div>
+        <a class="btn" href="/ticket/status?nr=${encodeURIComponent(t.nr)}">Aktualisieren</a>
+        <a class="btn secondary" href="/ticket">Zurück</a>
+    `));
+});
+
+// ---------- Hausmeister-Übersicht ----------
+const HM_FILTERS = ['offen', 'erledigt', 'alle'];
+
+function renderHausmeisterTicket(t, f, today) {
+    const overdue = t.bis && t.bis < today && t.status !== 'Erledigt';
+    const last = t.history[t.history.length - 1] || {};
+    const buttons = TICKET_STATI.map(s =>
+        `<button type="submit" name="status" value="${escapeHtml(s)}" class="st-btn ${TICKET_STATUS_CLASS[s]}${t.status === s ? ' current' : ''}">${escapeHtml(s)}</button>`
+    ).join('');
+    const mapLink = t.adresse
+        ? ` · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.adresse)}" target="_blank" rel="noopener">Karte</a>`
+        : '';
+    const mailSubject = encodeURIComponent(`Hausmeisterauftrag ${t.nr}: ${t.titel}`);
+
+    return `
+    <div class="box ticket b-${TICKET_STATUS_CLASS[t.status] || 'st-wait'}" id="${escapeHtml(t.nr)}">
+        <div class="t-head">
+            <div>
+                <div class="t-title">${escapeHtml(t.titel)}</div>
+                <div class="t-meta">${escapeHtml(t.nr)} · eingegangen ${escapeHtml(formatTs(t.createdAt))}</div>
+            </div>
+            <span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}">${escapeHtml(t.status)}</span>
+        </div>
+        <div class="t-desc">${escapeHtml(t.beschreibung)}</div>
+        <div class="t-info">
+            <div><b>Von:</b> ${escapeHtml(t.auftraggeber)} · <a href="mailto:${escapeHtml(t.email)}?subject=${mailSubject}">${escapeHtml(t.email)}</a></div>
+            <div><b>Ort:</b> ${escapeHtml(t.ort)}${t.adresse ? ', ' + escapeHtml(t.adresse) : ''}${mapLink}</div>
+            <div><b>Bis:</b> ${t.bis ? escapeHtml(formatDateLong(t.bis)) : 'keine Angabe'}${overdue ? ' <span class="overdue">überfällig</span>' : ''}</div>
+            ${last.note && last.note !== 'Auftrag eingegangen' ? `<div><b>Letzte Anmerkung:</b> ${escapeHtml(last.note)} <span class="hint">(${escapeHtml(formatTs(last.ts))})</span></div>` : ''}
+        </div>
+        <form method="POST" action="/hausmeister/status">
+            <input type="hidden" name="nr" value="${escapeHtml(t.nr)}">
+            <input type="hidden" name="f" value="${escapeHtml(f)}">
+            <input type="text" name="note" maxlength="500" placeholder="Anmerkung oder Rückfrage an den Auftraggeber (optional, wird per E-Mail mitgeschickt)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
+            <div class="st-buttons">${buttons}</div>
+        </form>
+    </div>`;
+}
+
+app.get('/hausmeister', (req, res) => {
+    const f = HM_FILTERS.includes(req.query.f) ? req.query.f : 'offen';
+    const today = berlinDate();
+
+    const list = tickets.filter(t =>
+        f === 'alle' ? true : (f === 'erledigt' ? t.status === 'Erledigt' : t.status !== 'Erledigt')
+    );
+    list.sort((a, b) => {
+        if (f === 'offen') {
+            const da = a.bis || '9999-99-99';
+            const db = b.bis || '9999-99-99';
+            return da.localeCompare(db) || a.createdAt.localeCompare(b.createdAt);
+        }
+        return b.createdAt.localeCompare(a.createdAt);
+    });
+
+    const cnt = s => tickets.filter(t => t.status === s).length;
+    const openCount = tickets.filter(t => t.status !== 'Erledigt').length;
+    const cards = list.map(t => renderHausmeisterTicket(t, f, today)).join('');
+
+    res.send(ticketPage('Hausmeister Aufträge', `
+        <h1>🔧 Hausmeister – Aufträge</h1>
+        <div class="tabs">
+            <a class="tab${f === 'offen' ? ' active' : ''}" href="/hausmeister?f=offen">Offen (${openCount})</a>
+            <a class="tab${f === 'erledigt' ? ' active' : ''}" href="/hausmeister?f=erledigt">Erledigt (${cnt('Erledigt')})</a>
+            <a class="tab${f === 'alle' ? ' active' : ''}" href="/hausmeister?f=alle">Alle (${tickets.length})</a>
+            <a class="tab" href="/ticket">➕ Auftrag erfassen</a>
+        </div>
+        <p class="hint">Warteschlange: ${cnt('Warteschlange')} · In Arbeit: ${cnt('In Arbeit')} · Rückfrage offen: ${cnt('Rückfrage offen')}</p>
+        ${cards || '<div class="box">Keine Aufträge in dieser Ansicht.</div>'}
+        <script>
+        setInterval(function() {
+            var typing = false;
+            document.querySelectorAll('input[name="note"]').forEach(function(i) { if (i.value) typing = true; });
+            if (!typing && !document.hidden && document.activeElement.tagName !== 'INPUT') location.reload();
+        }, 60000);
+        </script>
+    `, true));
+});
+
+app.post('/hausmeister/status', (req, res) => {
+    const b = req.body || {};
+    const back = '/hausmeister' + (HM_FILTERS.includes(b.f) ? '?f=' + b.f : '');
+    const t = tickets.find(x => x.nr === b.nr);
+    const status = b.status;
+    const note = clip(b.note, 500);
+
+    if (!t || !TICKET_STATI.includes(status)) return res.redirect(back);
+
+    // Nur speichern, wenn sich der Status ändert oder eine Anmerkung dabei ist
+    if (t.status !== status || note) {
+        t.status = status;
+        t.history.push({ ts: new Date().toISOString(), status, note });
+        ticketsVersion++;
+        saveTickets();
+        pushTicket(t);
+
+        const link = `${baseUrl(req)}/ticket/status?nr=${encodeURIComponent(t.nr)}`;
+        sendMail(t.email, `Hausmeisterauftrag ${t.nr}: ${status}`,
+            `Hallo ${t.auftraggeber},\n\n` +
+            `der Status Ihres Auftrags „${t.titel}“ (${t.nr}) hat sich geändert:\n\n` +
+            `Neuer Status: ${status}\n` +
+            (note ? `Anmerkung: ${note}\n` : '') +
+            `\nStatus abrufen: ${link}\n` +
+            (status === 'Rückfrage offen' ? `\nBitte antworten Sie auf diese E-Mail, um die Rückfrage zu beantworten.\n` : ''));
+    }
+    res.redirect(back);
+});
+if (sheetEnabled) {
+    loadTicketsFromSheet();
+    setInterval(loadTicketsFromSheet, 60000);
+} else {
+    console.log("Tickets werden nur lokal gespeichert (TICKET_SHEET_URL / TICKET_SHEET_TOKEN nicht gesetzt).");
+}
+// ===================== ENDE HAUSMEISTER-TICKETSYSTEM =====================
 
 app.listen(port, () => {
     console.log(`Server läuft auf Port ${port}`);
