@@ -1184,6 +1184,8 @@ const TICKET_SHEET_TOKEN = process.env.TICKET_SHEET_TOKEN || 'Katzenfutter!666';
 const sheetEnabled = !!(TICKET_SHEET_URL && TICKET_SHEET_TOKEN);
 const unsynced = new Set(); // Tickets, die noch nicht erfolgreich ins Sheet geschrieben wurden
 let ticketsVersion = 0;     // zählt lokale Änderungen (schützt vor veralteten Abfrageergebnissen)
+let lastSheetLoad = 0;      // Zeitpunkt der letzten Abfrage des Sheets
+let sheetLoadPromise = null;
 
 function normalizeSheetTicket(r) {
     if (!r || !String(r.nr || '').trim()) return null;
@@ -1237,12 +1239,15 @@ async function pushTicket(ticket) {
         }
     } catch (e) {
         console.log("Ticket-Übertragung ins Sheet fehlgeschlagen:", e.message);
+    } finally {
+        ticketsVersion++; // eine gleichzeitig laufende Abfrage kann veraltet sein -> verwerfen
     }
 }
 
 // Tickets aus dem Sheet laden (so werden auch Änderungen von Hand übernommen)
 async function loadTicketsFromSheet() {
     if (!sheetEnabled) return;
+    lastSheetLoad = Date.now();
     const versionAtStart = ticketsVersion;
     try {
         const r = await axios.get(TICKET_SHEET_URL, {
@@ -1270,6 +1275,20 @@ async function loadTicketsFromSheet() {
     } catch (e) {
         console.log("Ticket-Abfrage aus dem Sheet fehlgeschlagen:", e.message);
     }
+}
+
+// Sheet neu lesen, wenn die letzte Abfrage länger als maxAgeMs her ist (parallele Abfragen werden zusammengefasst)
+function refreshTicketsIfStale(maxAgeMs) {
+    if (!sheetEnabled) return Promise.resolve();
+    if (sheetLoadPromise) return sheetLoadPromise;
+    if (Date.now() - lastSheetLoad < maxAgeMs) return Promise.resolve();
+    sheetLoadPromise = loadTicketsFromSheet().finally(() => { sheetLoadPromise = null; });
+    return sheetLoadPromise;
+}
+
+// Für Seitenaufrufe: aktuelle Daten holen, aber höchstens 4 Sekunden warten
+async function refreshTicketsQuick() {
+    await Promise.race([refreshTicketsIfStale(10000), new Promise(r => setTimeout(r, 4000))]);
 }
 
 // E-Mail-Versand (nur aktiv, wenn SMTP_HOST gesetzt und nodemailer installiert ist)
@@ -1559,7 +1578,8 @@ app.post('/ticket/neu', (req, res) => {
     `));
 });
 
-app.get('/ticket/status', (req, res) => {
+app.get('/ticket/status', async (req, res) => {
+    await refreshTicketsQuick();
     const nr = normalizeNr(req.query.nr);
     const t = tickets.find(x => x.nr === nr);
 
@@ -1642,7 +1662,8 @@ function renderHausmeisterTicket(t, f, today) {
     </div>`;
 }
 
-app.get('/hausmeister', (req, res) => {
+app.get('/hausmeister', async (req, res) => {
+    await refreshTicketsQuick();
     const f = HM_FILTERS.includes(req.query.f) ? req.query.f : 'offen';
     const today = berlinDate();
 
@@ -1677,7 +1698,7 @@ app.get('/hausmeister', (req, res) => {
             var typing = false;
             document.querySelectorAll('input[name="note"]').forEach(function(i) { if (i.value) typing = true; });
             if (!typing && !document.hidden && document.activeElement.tagName !== 'INPUT') location.reload();
-        }, 60000);
+        }, 30000);
         </script>
     `, true));
 });
@@ -1711,8 +1732,8 @@ app.post('/hausmeister/status', (req, res) => {
     res.redirect(back);
 });
 if (sheetEnabled) {
-    loadTicketsFromSheet();
-    setInterval(loadTicketsFromSheet, 60000);
+    refreshTicketsIfStale(0);
+    setInterval(() => refreshTicketsIfStale(0), 60000);
 } else {
     console.log("Tickets werden nur lokal gespeichert (TICKET_SHEET_URL / TICKET_SHEET_TOKEN nicht gesetzt).");
 }
