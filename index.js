@@ -1147,7 +1147,7 @@ try {
 //   TICKET_SHEET_URL    Web-App-URL des Google-Apps-Scripts (Tickets werden dauerhaft in einem Google Sheet gespeichert)
 //   TICKET_SHEET_TOKEN  Geheimes Passwort, identisch mit TOKEN im Apps Script
 //   TICKETS_FILE        Lokale Sicherungskopie / Zwischenspeicher (Standard ./tickets.json)
-//   ARCHIVE_AFTER_MONTHS  Erledigte Tickets werden nach dieser Zeit archiviert (Standard 3 Monate)
+//   ARCHIVE_AFTER_MONTHS  Erledigte und stornierte Tickets werden nach dieser Zeit archiviert (Standard 3 Monate)
 //   BASE_URL         Öffentliche Adresse des Servers für Links in E-Mails (z. B. https://mein-dashboard.onrender.com)
 //   SMTP_HOST, SMTP_PORT, SMTP_SECURE (true/false), SMTP_USER, SMTP_PASS   -> E-Mail-Versand (benötigt "npm install nodemailer")
 //   MAIL_FROM        Absenderadresse (Standard: SMTP_USER)
@@ -1155,12 +1155,13 @@ try {
 
 const crypto = require('crypto');
 const TICKETS_FILE = process.env.TICKETS_FILE || './tickets.json';
-const TICKET_STATI = ['Warteschlange', 'In Arbeit', 'Erledigt', 'Rückfrage offen'];
+const TICKET_STATI = ['Warteschlange', 'In Arbeit', 'Erledigt', 'Rückfrage offen', 'Storniert'];
 const TICKET_STATUS_CLASS = {
     'Warteschlange': 'st-wait',
     'In Arbeit': 'st-work',
     'Erledigt': 'st-done',
-    'Rückfrage offen': 'st-question'
+    'Rückfrage offen': 'st-question',
+    'Storniert': 'st-cancel'
 };
 
 let tickets = [];
@@ -1294,11 +1295,11 @@ async function loadTicketsFromSheet() {
 }
 
 // ---------- Archivierung erledigter Tickets ----------
-// Zeitpunkt, seit dem das Ticket (ununterbrochen) "Erledigt" ist, sonst null
+// Zeitpunkt, seit dem das Ticket (ununterbrochen) "Erledigt" oder "Storniert" ist, sonst null
 function ticketClosedAt(t) {
-    if (!t || t.status !== 'Erledigt' || !Array.isArray(t.history)) return null;
+    if (!t || !['Erledigt', 'Storniert'].includes(t.status) || !Array.isArray(t.history)) return null;
     let closed = null;
-    for (let i = t.history.length - 1; i >= 0 && t.history[i].status === 'Erledigt'; i--) closed = t.history[i].ts;
+    for (let i = t.history.length - 1; i >= 0 && t.history[i].status === t.status; i--) closed = t.history[i].ts;
     const d = closed ? new Date(closed) : null;
     return d && !isNaN(d) ? d : null;
 }
@@ -1469,6 +1470,8 @@ const ticketStyles = `
   .st-work { background: rgba(255,159,10,0.25); color: #d98200; }
   .st-done { background: rgba(50,215,75,0.22); color: #25a244; }
   .st-question { background: rgba(255,69,58,0.2); color: #ff453a; }
+  .st-cancel { background: rgba(142,142,147,0.15); color: #8e8e93; text-decoration: line-through; }
+  .btn.danger { background: #ff453a; }
   .timeline { list-style: none; padding: 0; margin: 0; }
   .timeline li { padding: 8px 0; border-top: 1px solid var(--border); }
   .timeline li:first-child { border-top: none; }
@@ -1480,6 +1483,7 @@ const ticketStyles = `
   .ticket.b-st-work { border-left-color: #ff9f0a; }
   .ticket.b-st-done { border-left-color: #32d74b; }
   .ticket.b-st-question { border-left-color: #ff453a; }
+  .ticket.b-st-cancel { border-left-color: #8e8e93; opacity: 0.75; }
   .t-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
   .t-title { font-weight: 800; font-size: 1.1rem; }
   .t-meta { color: var(--muted); font-size: 0.85rem; margin: 4px 0 8px; }
@@ -1674,7 +1678,7 @@ app.get('/ticket/status', async (req, res) => {
             <h1>🔧 Hausmeister</h1>
             <div class="box">
                 <div class="error">Zu dieser Ticketnummer wurde kein Auftrag gefunden.</div>
-                <p class="hint">Bitte die Nummer prüfen (Format: HM-XXXXXX). Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt sind, werden archiviert und hier nicht mehr angezeigt.</p>
+                <p class="hint">Bitte die Nummer prüfen (Format: HM-XXXXXX). Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt oder storniert sind, werden archiviert und hier nicht mehr angezeigt.</p>
                 <a class="btn" href="/ticket">Zurück</a>
             </div>
         `));
@@ -1704,16 +1708,61 @@ app.get('/ticket/status', async (req, res) => {
             <h2>Verlauf</h2>
             <ul class="timeline">${history}</ul>
         </div>
+        ${(t.status !== 'Erledigt' && t.status !== 'Storniert') ? `
+        <div class="box">
+            <h2>Auftrag stornieren</h2>
+            <p class="hint">${t.status === 'In Arbeit' ? 'Der Auftrag wird bereits bearbeitet. Der Hausmeister wird über die Stornierung informiert.' : 'Der Auftrag wird nicht mehr ausgeführt.'}</p>
+            <form method="POST" action="/ticket/stornieren" onsubmit="return confirm('Auftrag wirklich stornieren?');">
+                <input type="hidden" name="nr" value="${escapeHtml(t.nr)}">
+                <label>Grund <span class="opt">(optional)</span></label>
+                <input name="grund" maxlength="300">
+                <button type="submit" class="btn danger">Auftrag stornieren</button>
+            </form>
+        </div>` : ''}
         <a class="btn" href="/ticket/status?nr=${encodeURIComponent(t.nr)}">Aktualisieren</a>
         <a class="btn secondary" href="/ticket">Zurück</a>
     `));
 });
 
+app.post('/ticket/stornieren', async (req, res) => {
+    await refreshTicketsQuick();
+    const b = req.body || {};
+    const t = tickets.find(x => x.nr === normalizeNr(b.nr));
+    if (!t) return res.redirect('/ticket');
+    const back = '/ticket/status?nr=' + encodeURIComponent(t.nr);
+    if (t.status === 'Erledigt' || t.status === 'Storniert') return res.redirect(back);
+
+    const grund = clip(b.grund, 300);
+    const warInArbeit = t.status === 'In Arbeit';
+    t.status = 'Storniert';
+    t.history.push({
+        ts: new Date().toISOString(),
+        status: 'Storniert',
+        note: 'Vom Auftraggeber storniert' + (grund ? ': ' + grund : '')
+    });
+    ticketsVersion++;
+    saveTickets();
+    pushTicket(t);
+
+    const base = baseUrl(req);
+    sendMail(t.email, `Hausmeisterauftrag ${t.nr} storniert`,
+        `Hallo ${t.auftraggeber},\n\n` +
+        `Ihr Auftrag „${t.titel}“ (${t.nr}) wurde storniert.\n\n` +
+        `Status abrufen: ${base}/ticket/status?nr=${encodeURIComponent(t.nr)}`);
+    if (process.env.HAUSMEISTER_MAIL) {
+        sendMail(process.env.HAUSMEISTER_MAIL, `Auftrag ${t.nr} storniert${warInArbeit ? ' (war bereits in Arbeit)' : ''}`,
+            `Der Auftrag „${t.titel}“ (${t.nr}) von ${t.auftraggeber} wurde storniert.\n` +
+            (grund ? `Grund: ${grund}\n` : '') +
+            `\nÜbersicht: ${base}/hausmeister`);
+    }
+    res.redirect(back);
+});
+
 // ---------- Hausmeister-Übersicht ----------
-const HM_FILTERS = ['offen', 'erledigt', 'alle'];
+const HM_FILTERS = ['offen', 'erledigt', 'storniert', 'alle'];
 
 function renderHausmeisterTicket(t, f, today) {
-    const overdue = t.bis && t.bis < today && t.status !== 'Erledigt';
+    const overdue = t.bis && t.bis < today && t.status !== 'Erledigt' && t.status !== 'Storniert';
     const last = t.history[t.history.length - 1] || {};
     const buttons = TICKET_STATI.map(s =>
         `<button type="submit" name="status" value="${escapeHtml(s)}" class="st-btn ${TICKET_STATUS_CLASS[s]}${t.status === s ? ' current' : ''}">${escapeHtml(s)}</button>`
@@ -1753,9 +1802,12 @@ app.get('/hausmeister', async (req, res) => {
     const f = HM_FILTERS.includes(req.query.f) ? req.query.f : 'offen';
     const today = berlinDate();
 
-    const list = tickets.filter(t =>
-        f === 'alle' ? true : (f === 'erledigt' ? t.status === 'Erledigt' : t.status !== 'Erledigt')
-    );
+    const list = tickets.filter(t => {
+        if (f === 'alle') return true;
+        if (f === 'erledigt') return t.status === 'Erledigt';
+        if (f === 'storniert') return t.status === 'Storniert';
+        return t.status !== 'Erledigt' && t.status !== 'Storniert'; // offen
+    });
     list.sort((a, b) => {
         if (f === 'offen') {
             const da = a.bis || '9999-99-99';
@@ -1766,7 +1818,7 @@ app.get('/hausmeister', async (req, res) => {
     });
 
     const cnt = s => tickets.filter(t => t.status === s).length;
-    const openCount = tickets.filter(t => t.status !== 'Erledigt').length;
+    const openCount = tickets.filter(t => t.status !== 'Erledigt' && t.status !== 'Storniert').length;
     const cards = list.map(t => renderHausmeisterTicket(t, f, today)).join('');
 
     res.send(ticketPage('Hausmeister Aufträge', `
@@ -1774,11 +1826,12 @@ app.get('/hausmeister', async (req, res) => {
         <div class="tabs">
             <a class="tab${f === 'offen' ? ' active' : ''}" href="/hausmeister?f=offen">Offen (${openCount})</a>
             <a class="tab${f === 'erledigt' ? ' active' : ''}" href="/hausmeister?f=erledigt">Erledigt (${cnt('Erledigt')})</a>
+            <a class="tab${f === 'storniert' ? ' active' : ''}" href="/hausmeister?f=storniert">Storniert (${cnt('Storniert')})</a>
             <a class="tab${f === 'alle' ? ' active' : ''}" href="/hausmeister?f=alle">Alle (${tickets.length})</a>
             <a class="tab" href="/ticket">➕ Auftrag erfassen</a>
         </div>
         <p class="hint">Warteschlange: ${cnt('Warteschlange')} · In Arbeit: ${cnt('In Arbeit')} · Rückfrage offen: ${cnt('Rückfrage offen')}</p>
-        ${f === 'erledigt' ? `<p class="hint">Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt sind, werden automatisch archiviert (Blatt "Hausmeister-Archiv").</p>` : ''}
+        ${(f === 'erledigt' || f === 'storniert') ? `<p class="hint">Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt oder storniert sind, werden automatisch archiviert (Blatt "Hausmeister-Archiv").</p>` : ''}
         ${cards || '<div class="box">Keine Aufträge in dieser Ansicht.</div>'}
         <script>
         setInterval(function() {
