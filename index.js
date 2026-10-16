@@ -1490,9 +1490,20 @@ const ticketStyles = `
   .st-btn { padding: 12px 8px; border-radius: 10px; border: 2px solid transparent; background: var(--input); color: var(--text); font: inherit; font-weight: 800; cursor: pointer; }
   .st-btn.current { outline: 3px solid var(--accent); }
   a { color: var(--accent); }
+  .topnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .topnav a { padding: 8px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 700; font-size: 0.9rem; }
+  .embedded .nav-dash { display: none; } /* im Dashboard eingebettet gibt es dort schon eine Navigationsleiste */
 </style>`;
 
-function ticketPage(title, bodyHtml, wide) {
+// Navigationsleiste für alle Seiten der Auftraggeber
+const ticketNav = `
+<div class="topnav">
+    <a href="/dashboard" target="_top" class="nav-dash">🏠 Dashboard</a>
+    <a href="/ticket">➕ Neuer Auftrag</a>
+    <a href="/ticket#status">🔍 Status abrufen</a>
+</div>`;
+
+function ticketPage(title, bodyHtml, wide, noNav) {
     return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -1504,6 +1515,7 @@ function ticketPage(title, bodyHtml, wide) {
 (function() {
     var t = null;
     try { t = localStorage.getItem('theme'); } catch (e) {}
+    try { if (window.self !== window.top) document.documentElement.classList.add('embedded'); } catch (e) { document.documentElement.classList.add('embedded'); }
     if (t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
@@ -1512,7 +1524,7 @@ function ticketPage(title, bodyHtml, wide) {
 ${ticketStyles}
 </head>
 <body>
-<div class="wrap${wide ? ' wide' : ''}">${bodyHtml}</div>
+<div class="wrap${wide ? ' wide' : ''}">${noNav ? '' : ticketNav}${bodyHtml}</div>
 </body>
 </html>`;
 }
@@ -1523,7 +1535,7 @@ function renderTicketForm(values, error) {
     return ticketPage('Hausmeisterauftrag', `
         <h1>🔧 Hausmeister</h1>
 
-        <div class="box">
+        <div class="box" id="status">
             <h2>Status eines Auftrags abrufen</h2>
             <form method="GET" action="/ticket/status" class="row" style="align-items: flex-end;">
                 <div>
@@ -1775,7 +1787,7 @@ app.get('/hausmeister', async (req, res) => {
             if (!typing && !document.hidden && document.activeElement.tagName !== 'INPUT') location.reload();
         }, 30000);
         </script>
-    `, true));
+    `, true, true));
 });
 
 app.post('/hausmeister/status', (req, res) => {
