@@ -1147,6 +1147,7 @@ try {
 //   TICKET_SHEET_URL    Web-App-URL des Google-Apps-Scripts (Tickets werden dauerhaft in einem Google Sheet gespeichert)
 //   TICKET_SHEET_TOKEN  Geheimes Passwort, identisch mit TOKEN im Apps Script
 //   TICKETS_FILE        Lokale Sicherungskopie / Zwischenspeicher (Standard ./tickets.json)
+//   ARCHIVE_AFTER_MONTHS  Erledigte Tickets werden nach dieser Zeit archiviert (Standard 3 Monate)
 //   BASE_URL         Öffentliche Adresse des Servers für Links in E-Mails (z. B. https://mein-dashboard.onrender.com)
 //   SMTP_HOST, SMTP_PORT, SMTP_SECURE (true/false), SMTP_USER, SMTP_PASS   -> E-Mail-Versand (benötigt "npm install nodemailer")
 //   MAIL_FROM        Absenderadresse (Standard: SMTP_USER)
@@ -1182,6 +1183,8 @@ function saveTickets() {
 const TICKET_SHEET_URL = process.env.TICKET_SHEET_URL || 'https://script.google.com/macros/s/AKfycbzN8BWoMKmVhInp44wD_9My9aezcNRpW32LW2vatTv0tJW0uUa9bOUq8aL3AyidIZY46Q/exec';
 const TICKET_SHEET_TOKEN = process.env.TICKET_SHEET_TOKEN || 'Katzenfutter!666';
 const sheetEnabled = !!(TICKET_SHEET_URL && TICKET_SHEET_TOKEN);
+const ARCHIVE_AFTER_MONTHS = parseInt(process.env.ARCHIVE_AFTER_MONTHS || '3', 10);
+const ARCHIVE_FILE = process.env.TICKETS_ARCHIVE_FILE || './tickets_archiv.json'; // nur ohne Sheet-Anbindung
 const unsynced = new Set(); // Tickets, die noch nicht erfolgreich ins Sheet geschrieben wurden
 let ticketsVersion = 0;     // zählt lokale Änderungen (schützt vor veralteten Abfrageergebnissen)
 let lastSheetLoad = 0;      // Zeitpunkt der letzten Abfrage des Sheets
@@ -1263,9 +1266,22 @@ async function loadTicketsFromSheet() {
         if (ticketsVersion !== versionAtStart) return;
 
         const fromSheet = r.data.tickets.map(normalizeSheetTicket).filter(Boolean).filter(t => !unsynced.has(t.nr));
+
+        // Status wurde von Hand im Sheet geändert -> im Verlauf festhalten (wichtig z. B. für die Archivierung)
+        const changedByHand = [];
+        fromSheet.forEach(t => {
+            const lastEntry = t.history[t.history.length - 1];
+            if (lastEntry && lastEntry.status !== t.status) {
+                t.history.push({ ts: new Date().toISOString(), status: t.status, note: 'Status im Sheet geändert' });
+                changedByHand.push(t);
+            }
+        });
+
         const localPending = tickets.filter(t => unsynced.has(t.nr));
         tickets = [...fromSheet, ...localPending];
         saveTickets();
+
+        for (const t of changedByHand) await pushTicket(t);
 
         // Fehlgeschlagene Übertragungen erneut versuchen
         for (const nr of [...unsynced]) {
@@ -1274,6 +1290,64 @@ async function loadTicketsFromSheet() {
         }
     } catch (e) {
         console.log("Ticket-Abfrage aus dem Sheet fehlgeschlagen:", e.message);
+    }
+}
+
+// ---------- Archivierung erledigter Tickets ----------
+// Zeitpunkt, seit dem das Ticket (ununterbrochen) "Erledigt" ist, sonst null
+function ticketClosedAt(t) {
+    if (!t || t.status !== 'Erledigt' || !Array.isArray(t.history)) return null;
+    let closed = null;
+    for (let i = t.history.length - 1; i >= 0 && t.history[i].status === 'Erledigt'; i--) closed = t.history[i].ts;
+    const d = closed ? new Date(closed) : null;
+    return d && !isNaN(d) ? d : null;
+}
+
+let archiveRunning = false;
+
+async function archiveOldTickets() {
+    if (archiveRunning) return;
+    archiveRunning = true;
+    try {
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - ARCHIVE_AFTER_MONTHS);
+        const old = tickets.filter(t => {
+            if (unsynced.has(t.nr)) return false;
+            const closed = ticketClosedAt(t);
+            return closed && closed < cutoff;
+        });
+        if (!old.length) return;
+        const nrs = old.map(t => t.nr);
+
+        let done = false;
+        if (sheetEnabled) {
+            // Im Sheet wandern die Zeilen ins Blatt "Hausmeister-Archiv"
+            const r = await axios.post(TICKET_SHEET_URL, JSON.stringify({ token: TICKET_SHEET_TOKEN, action: 'archive', nrs }), {
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                timeout: 30000,
+                maxRedirects: 5
+            });
+            done = !!(r.data && r.data.ok);
+            if (!done) console.log("Archivierung im Sheet fehlgeschlagen:", (r.data && r.data.error) || "ungültige Antwort (Apps Script aktualisiert und neu veröffentlicht?)");
+        } else {
+            let archive = [];
+            try { if (fs.existsSync(ARCHIVE_FILE)) archive = JSON.parse(fs.readFileSync(ARCHIVE_FILE, 'utf8')); } catch (e) { archive = []; }
+            const now = new Date().toISOString();
+            archive.push(...old.map(t => ({ ...t, archivedAt: now })));
+            fs.writeFileSync(ARCHIVE_FILE, JSON.stringify(archive, null, 2));
+            done = true;
+        }
+
+        if (done) {
+            tickets = tickets.filter(t => !nrs.includes(t.nr));
+            saveTickets();
+            console.log(`${nrs.length} erledigte Ticket(s) archiviert.`);
+        }
+    } catch (e) {
+        console.log("Archivierung fehlgeschlagen:", e.message);
+    } finally {
+        ticketsVersion++; // gleichzeitig laufende Abfragen sind veraltet -> verwerfen
+        archiveRunning = false;
     }
 }
 
@@ -1588,7 +1662,7 @@ app.get('/ticket/status', async (req, res) => {
             <h1>🔧 Hausmeister</h1>
             <div class="box">
                 <div class="error">Zu dieser Ticketnummer wurde kein Auftrag gefunden.</div>
-                <p class="hint">Bitte die Nummer prüfen (Format: HM-XXXXXX).</p>
+                <p class="hint">Bitte die Nummer prüfen (Format: HM-XXXXXX). Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt sind, werden archiviert und hier nicht mehr angezeigt.</p>
                 <a class="btn" href="/ticket">Zurück</a>
             </div>
         `));
@@ -1692,6 +1766,7 @@ app.get('/hausmeister', async (req, res) => {
             <a class="tab" href="/ticket">➕ Auftrag erfassen</a>
         </div>
         <p class="hint">Warteschlange: ${cnt('Warteschlange')} · In Arbeit: ${cnt('In Arbeit')} · Rückfrage offen: ${cnt('Rückfrage offen')}</p>
+        ${f === 'erledigt' ? `<p class="hint">Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt sind, werden automatisch archiviert (Blatt "Hausmeister-Archiv").</p>` : ''}
         ${cards || '<div class="box">Keine Aufträge in dieser Ansicht.</div>'}
         <script>
         setInterval(function() {
@@ -1731,6 +1806,8 @@ app.post('/hausmeister/status', (req, res) => {
     }
     res.redirect(back);
 });
+setTimeout(archiveOldTickets, 20000);                // kurz nach dem Start
+setInterval(archiveOldTickets, 6 * 60 * 60 * 1000);  // danach alle 6 Stunden
 if (sheetEnabled) {
     refreshTicketsIfStale(0);
     setInterval(() => refreshTicketsIfStale(0), 60000);
