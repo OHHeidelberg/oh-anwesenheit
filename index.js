@@ -1179,7 +1179,7 @@ function saveTickets() {
 }
 
 // ---------- Dauerhafte Speicherung im Google Sheet (über Apps Script) ----------
-const TICKET_SHEET_URL = process.env.TICKET_SHEET_URL || '';
+const TICKET_SHEET_URL = process.env.TICKET_SHEET_URL || 'https://script.google.com/macros/s/AKfycbx-UPrrB_kf5jVqzkBvwWE5u2N7Av4wvqZzAwO9tN05o74OLh1Hc6siEMWzYRB9XkhjrA/exec';
 const TICKET_SHEET_TOKEN = process.env.TICKET_SHEET_TOKEN || '';
 const sheetEnabled = !!(TICKET_SHEET_URL && TICKET_SHEET_TOKEN);
 const unsynced = new Set(); // Tickets, die noch nicht erfolgreich ins Sheet geschrieben wurden
