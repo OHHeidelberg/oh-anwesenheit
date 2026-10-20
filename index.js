@@ -1151,7 +1151,9 @@ try {
 //   BASE_URL         Öffentliche Adresse des Servers für Links in E-Mails (z. B. https://mein-dashboard.onrender.com)
 //   SMTP_HOST, SMTP_PORT, SMTP_SECURE (true/false), SMTP_USER, SMTP_PASS   -> E-Mail-Versand (benötigt "npm install nodemailer")
 //   MAIL_FROM        Absenderadresse (Standard: SMTP_USER)
-//   HAUSMEISTER_MAIL E-Mail des Hausmeisters: bekommt neue Aufträge und ist Antwortadresse für Rückfragen
+//   HAUSMEISTER_SLACK_CHANNEL  Slack-Channel für Meldungen an den Hausmeister (Standard #hausmeister)
+//   HAUSMEISTER_SLACK_TOKEN    Optional: eigener Slack-Token für diese Meldungen (Standard: SLACK_TOKEN); braucht das Recht chat:write
+//   HAUSMEISTER_MAIL            Optional: Antwortadresse (Reply-To) in den E-Mails an die Auftraggeber
 
 const crypto = require('crypto');
 const TICKETS_FILE = process.env.TICKETS_FILE || './tickets.json';
@@ -1394,6 +1396,32 @@ async function sendMail(to, subject, text) {
         });
     } catch (e) {
         console.log("Fehler beim E-Mail-Versand:", e.message);
+    }
+}
+
+// ---------- Slack-Benachrichtigung des Hausmeisters ----------
+const HAUSMEISTER_SLACK_CHANNEL = process.env.HAUSMEISTER_SLACK_CHANNEL || '#hausmeister';
+const HAUSMEISTER_SLACK_TOKEN = process.env.HAUSMEISTER_SLACK_TOKEN || SLACK_TOKEN;
+
+// Sonderzeichen für Slack entschärfen (verhindert z. B. eingeschleuste @channel-/Link-Syntax aus Formulartexten)
+function slackEscape(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function notifyHausmeisterSlack(text) {
+    if (!HAUSMEISTER_SLACK_TOKEN) {
+        console.log("Slack-Meldung an den Hausmeister nicht möglich: kein Slack-Token gesetzt.");
+        return;
+    }
+    try {
+        const r = await axios.post('https://slack.com/api/chat.postMessage',
+            { channel: HAUSMEISTER_SLACK_CHANNEL, text, unfurl_links: false, unfurl_media: false },
+            { headers: { Authorization: `Bearer ${HAUSMEISTER_SLACK_TOKEN}` }, timeout: 10000 });
+        if (!r.data || !r.data.ok) {
+            console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", (r.data && r.data.error) || "ungültige Antwort");
+        }
+    } catch (e) {
+        console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", e.message);
     }
 }
 
@@ -1643,17 +1671,14 @@ app.post('/ticket/neu', (req, res) => {
         `Status abrufen: ${statusLink}\n\n` +
         `Bei Statusänderungen und Rückfragen melden wir uns an diese Adresse.`);
 
-    if (process.env.HAUSMEISTER_MAIL) {
-        sendMail(process.env.HAUSMEISTER_MAIL, `Neuer Auftrag ${ticket.nr}: ${ticket.titel}`,
-            `Neuer Hausmeisterauftrag\n\n` +
-            `Ticketnummer: ${ticket.nr}\n` +
-            `Auftraggeber: ${ticket.auftraggeber} (${ticket.email})\n` +
-            `Titel: ${ticket.titel}\n` +
-            `Ort: ${ticket.ort}${ticket.adresse ? ', ' + ticket.adresse : ''}\n` +
-            `Bitte erledigen bis: ${ticket.bis ? formatDateLong(ticket.bis) : 'keine Angabe'}\n\n` +
-            `${ticket.beschreibung}\n\n` +
-            `Übersicht: ${base}/hausmeister`);
-    }
+    notifyHausmeisterSlack(
+        `:wrench: *Neuer Hausmeisterauftrag* \`${ticket.nr}\`\n` +
+        `*${slackEscape(ticket.titel)}*\n` +
+        `Von: ${slackEscape(ticket.auftraggeber)} (${slackEscape(ticket.email)})\n` +
+        `Ort: ${slackEscape(ticket.ort)}${ticket.adresse ? ', ' + slackEscape(ticket.adresse) : ''}\n` +
+        `Bitte erledigen bis: ${ticket.bis ? formatDateLong(ticket.bis) : 'keine Angabe'}\n\n` +
+        `${slackEscape(ticket.beschreibung)}\n\n` +
+        `<${base}/hausmeister|Zur Übersicht>`);
 
     res.send(ticketPage('Auftrag eingegangen', `
         <h1>✅ Auftrag eingegangen</h1>
@@ -1749,12 +1774,11 @@ app.post('/ticket/stornieren', async (req, res) => {
         `Hallo ${t.auftraggeber},\n\n` +
         `Ihr Auftrag „${t.titel}“ (${t.nr}) wurde storniert.\n\n` +
         `Status abrufen: ${base}/ticket/status?nr=${encodeURIComponent(t.nr)}`);
-    if (process.env.HAUSMEISTER_MAIL) {
-        sendMail(process.env.HAUSMEISTER_MAIL, `Auftrag ${t.nr} storniert${warInArbeit ? ' (war bereits in Arbeit)' : ''}`,
-            `Der Auftrag „${t.titel}“ (${t.nr}) von ${t.auftraggeber} wurde storniert.\n` +
-            (grund ? `Grund: ${grund}\n` : '') +
-            `\nÜbersicht: ${base}/hausmeister`);
-    }
+    notifyHausmeisterSlack(
+        `:no_entry_sign: *Auftrag storniert* \`${t.nr}\`${warInArbeit ? ' (war bereits in Arbeit!)' : ''}\n` +
+        `*${slackEscape(t.titel)}* von ${slackEscape(t.auftraggeber)}\n` +
+        (grund ? `Grund: ${slackEscape(grund)}\n` : '') +
+        `<${base}/hausmeister?f=storniert|Zur Übersicht>`);
     res.redirect(back);
 });
 
