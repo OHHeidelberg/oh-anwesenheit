@@ -1244,7 +1244,7 @@ async function pushTicket(ticket) {
             console.log("Ticket konnte nicht ins Sheet geschrieben werden:", (r.data && r.data.error) || "ungültige Antwort (Bereitstellung des Apps Scripts prüfen: Zugriff = Jeder)");
         }
     } catch (e) {
-        console.log("Ticket-Übertragung ins Sheet fehlgeschlagen:", e.message);
+        console.log("Ticket-Übertragung ins Sheet fehlgeschlagen:", describeError(e));
     } finally {
         ticketsVersion++; // eine gleichzeitig laufende Abfrage kann veraltet sein -> verwerfen
     }
@@ -1292,7 +1292,7 @@ async function loadTicketsFromSheet() {
             if (t) await pushTicket(t); else unsynced.delete(nr);
         }
     } catch (e) {
-        console.log("Ticket-Abfrage aus dem Sheet fehlgeschlagen:", e.message);
+        console.log("Ticket-Abfrage aus dem Sheet fehlgeschlagen:", describeError(e));
     }
 }
 
@@ -1347,7 +1347,7 @@ async function archiveOldTickets() {
             console.log(`${nrs.length} erledigte Ticket(s) archiviert.`);
         }
     } catch (e) {
-        console.log("Archivierung fehlgeschlagen:", e.message);
+        console.log("Archivierung fehlgeschlagen:", describeError(e));
     } finally {
         ticketsVersion++; // gleichzeitig laufende Abfragen sind veraltet -> verwerfen
         archiveRunning = false;
@@ -1421,8 +1421,22 @@ async function notifyHausmeisterSlack(text) {
             console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", (r.data && r.data.error) || "ungültige Antwort");
         }
     } catch (e) {
-        console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", e.message);
+        console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", describeError(e));
     }
+}
+
+// Fehlertext mit allen Details (bei Netzwerkfehlern ist e.message oft leer, dann stehen Code und Ursachen in e.code / e.errors)
+function describeError(e) {
+    const parts = [];
+    if (e && e.code) parts.push(e.code);
+    if (e && e.response && e.response.status) parts.push('HTTP ' + e.response.status);
+    if (e && e.message) parts.push(e.message);
+    if (e && Array.isArray(e.errors)) {
+        e.errors.forEach(x => {
+            if (x && (x.code || x.message)) parts.push(((x.code || '') + ' ' + (x.address || '') + ' ' + (x.message || '')).trim());
+        });
+    }
+    return parts.length ? parts.join(' | ') : String(e);
 }
 
 function clip(v, max) {
