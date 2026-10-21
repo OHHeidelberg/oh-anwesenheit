@@ -4,7 +4,23 @@ const { parse } = require('csv-parse/sync');
 const app = express();
 const port = process.env.PORT || 10000;
 
-const SLACK_TOKEN = process.env.SLACK_TOKEN;
+// Slack-Tokens (bei Render unter Environment eintragen, nicht in den Code schreiben):
+//   USER_TOKEN = Benutzer-Token (xoxp-) fürs Lesen und Setzen der Status (früher SLACK_TOKEN, wird als Ersatz weiter gelesen)
+//   BOT_TOKEN  = Bot-Token (xoxb-) für die Meldungen in #hausmeister (früher HAUSMEISTER_SLACK_TOKEN)
+const USER_TOKEN = process.env.USER_TOKEN || process.env.SLACK_TOKEN || '';
+const BOT_TOKEN = process.env.BOT_TOKEN || process.env.HAUSMEISTER_SLACK_TOKEN || '';
+
+// Slack meldet Fehler (z. B. invalid_auth, missing_scope) mit ok:false in der Antwort. Hier landen sie im Log
+// (jede Meldung höchstens alle 10 Minuten, damit das Log nicht überläuft).
+const slackErrorSeen = {};
+function logSlackError(context, data) {
+    if (!data || data.ok !== false) return;
+    const key = context + ':' + data.error;
+    const now = Date.now();
+    if (slackErrorSeen[key] && now - slackErrorSeen[key] < 10 * 60 * 1000) return;
+    slackErrorSeen[key] = now;
+    console.log(`Slack-Fehler (${context}): ${data.error}${data.needed ? ' - benötigtes Recht: ' + data.needed : ''}${data.provided ? ' - vorhandene Rechte: ' + data.provided : ''}`);
+}
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?output=csv';
 const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypAf3kFwxNZRkfZvIVbKUiBUzom2WDJc5_sd_SE13WMi2Lm0Wu9iccCQk8cTRP9GbYJ5/pub?gid=1558993151&single=true&output=csv';
 
@@ -580,11 +596,13 @@ async function fetchKrankData() {
 async function getFullStatus(id, name) {
     if (!id || id.trim() === "" || id.toLowerCase() === "kein") return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 };
     try {
-        const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
+        const h = { Authorization: `Bearer ${USER_TOKEN}` };
         const [p, s] = await Promise.all([
             axios.get(`https://slack.com/api/users.profile.get?user=${id.trim()}`, { headers: h, timeout: 5000 }).catch(() => ({data:{}})),
             axios.get(`https://slack.com/api/users.getPresence?user=${id.trim()}`, { headers: h, timeout: 5000 }).catch(() => ({data:{}}))
         ]);
+        logSlackError('users.profile.get', p.data);
+        logSlackError('users.getPresence', s.data);
         const prof = p.data.profile || {};
         const online = s.data?.presence === 'active';
         const txt = prof.status_text || "";
@@ -711,7 +729,7 @@ setInterval(async () => {
     });
     const nowObj = new Date(berlinTime);
     const now = Math.floor(Date.now() / 1000);
-    const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
+    const h = { Authorization: `Bearer ${USER_TOKEN}` };
 
     // Infotext täglich um 0:00 Uhr (Berlin) auf die Standardnachricht zurücksetzen
     if (infoCustom && infoDate !== berlinDate()) resetInfoText();
@@ -742,11 +760,12 @@ setInterval(async () => {
                     }
                 }
 
-                await axios.post(
+                const restoreRes = await axios.post(
                     'https://slack.com/api/users.profile.set',
                     { user: userId, profile },
                     { headers: h }
                 );
+                logSlackError('users.profile.set', restoreRes.data);
 
                 delete pauseStorage[userId];
                 if (nextEntry) pauseStorage[userId] = nextEntry;
@@ -774,7 +793,7 @@ setInterval(async () => {
 
                     if (!lowT.includes("urlaub") && !lowT.includes("krank")) {
                         try {
-                            await axios.post(
+                            const resetRes = await axios.post(
                                 'https://slack.com/api/users.profile.set',
                                 {
                                     user: person.id.trim(),
@@ -786,6 +805,7 @@ setInterval(async () => {
                                 },
                                 { headers: h }
                             );
+                            logSlackError('users.profile.set', resetRes.data);
                         } catch (e) {}
                     }
                 }
@@ -1041,7 +1061,7 @@ app.get('/update', async (req, res) => {
     const { user, status, bis } = req.query;
     const person = cachedData.find(r => r.n === user);
     if (person?.id && person.id !== "kein") {
-        const h = { Authorization: `Bearer ${SLACK_TOKEN}` };
+        const h = { Authorization: `Bearer ${USER_TOKEN}` };
         const map = { 
             da: ["Im Büro", ":office:"], 
             homeoffice: ["Homeoffice", ":house_with_garden:"], 
@@ -1104,7 +1124,7 @@ if (status === 'pause') {
 }
 
 try {
-    await axios.post(
+    const setRes = await axios.post(
         'https://slack.com/api/users.profile.set',
         {
             user: person.id.trim(),
@@ -1116,6 +1136,7 @@ try {
         },
         { headers: h }
     );
+    logSlackError('users.profile.set', setRes.data);
 
     // Automatische Rückstellung speichern
     if (expiration > 0) {
@@ -1152,7 +1173,7 @@ try {
 //   SMTP_HOST, SMTP_PORT, SMTP_SECURE (true/false), SMTP_USER, SMTP_PASS   -> E-Mail-Versand (benötigt "npm install nodemailer")
 //   MAIL_FROM        Absenderadresse (Standard: SMTP_USER)
 //   HAUSMEISTER_SLACK_CHANNEL  Slack-Channel für Meldungen an den Hausmeister (Standard #hausmeister)
-//   HAUSMEISTER_SLACK_TOKEN    Optional: eigener Slack-Token für diese Meldungen (Standard: SLACK_TOKEN); braucht das Recht chat:write
+//   BOT_TOKEN                  Slack-Bot-Token (xoxb-) für die Meldungen; ohne ihn wird USER_TOKEN genutzt (beide werden im Hauptteil gelesen)
 //   HAUSMEISTER_MAIL            Optional: Antwortadresse (Reply-To) in den E-Mails an die Auftraggeber
 
 const crypto = require('crypto');
@@ -1401,7 +1422,7 @@ async function sendMail(to, subject, text) {
 
 // ---------- Slack-Benachrichtigung des Hausmeisters ----------
 const HAUSMEISTER_SLACK_CHANNEL = process.env.HAUSMEISTER_SLACK_CHANNEL || '#hausmeister';
-const HAUSMEISTER_SLACK_TOKEN = process.env.HAUSMEISTER_SLACK_TOKEN || SLACK_TOKEN;
+const HAUSMEISTER_SLACK_TOKEN = BOT_TOKEN || USER_TOKEN; // Bot-Token bevorzugt, sonst Benutzer-Token
 
 // Sonderzeichen für Slack entschärfen (verhindert z. B. eingeschleuste @channel-/Link-Syntax aus Formulartexten)
 function slackEscape(s) {
@@ -1410,7 +1431,7 @@ function slackEscape(s) {
 
 async function notifyHausmeisterSlack(text) {
     if (!HAUSMEISTER_SLACK_TOKEN) {
-        console.log("Slack-Meldung an den Hausmeister nicht möglich: kein Slack-Token gesetzt.");
+        console.log("Slack-Meldung an den Hausmeister nicht möglich: weder BOT_TOKEN noch USER_TOKEN gesetzt.");
         return;
     }
     try {
