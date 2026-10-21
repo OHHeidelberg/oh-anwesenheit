@@ -1594,6 +1594,18 @@ ${ticketStyles}
 function renderTicketForm(values, error) {
     values = values || {};
     const v = k => escapeHtml(values[k] || '');
+
+    // Auftraggeber: Auswahlliste mit den Mitarbeitern aus der Anwesenheitstabelle (Notlösung: Textfeld, falls die Liste fehlt)
+    const names = (typeof cachedData !== 'undefined' && Array.isArray(cachedData) ? cachedData : [])
+        .map(p => String((p && p.n) || '').trim()).filter(Boolean);
+    const uniqueNames = [...new Set(names)].sort((a, b) => a.localeCompare(b, 'de'));
+    if (values.auftraggeber && !uniqueNames.includes(values.auftraggeber) && uniqueNames.length) uniqueNames.push(values.auftraggeber);
+    const auftraggeberField = uniqueNames.length
+        ? `<select name="auftraggeber" required>
+                    <option value="" disabled${values.auftraggeber ? '' : ' selected'}>Bitte wählen</option>
+                    ${uniqueNames.map(n => `<option value="${escapeHtml(n)}"${n === values.auftraggeber ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+                </select>`
+        : `<input name="auftraggeber" value="${v('auftraggeber')}" required maxlength="100">`;
     return ticketPage('Hausmeisterauftrag', `
         <h1>🔧 Hausmeister</h1>
 
@@ -1615,7 +1627,7 @@ function renderTicketForm(values, error) {
             ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
             <form method="POST" action="/ticket/neu">
                 <label>Auftraggeber *</label>
-                <input name="auftraggeber" value="${v('auftraggeber')}" required maxlength="100">
+                ${auftraggeberField}
 
                 <label>Titel *</label>
                 <input name="titel" value="${v('titel')}" required maxlength="150">
@@ -1648,6 +1660,22 @@ function renderTicketForm(values, error) {
                 <button type="submit" class="btn">Auftrag absenden</button>
             </form>
         </div>
+        <script>
+        (function() {
+            var sel = document.querySelector('select[name="auftraggeber"]');
+            if (!sel) return;
+            var saved = null;
+            try { saved = localStorage.getItem('selectedMitarbeiter'); } catch (e) {}
+            if (saved && !sel.value) {
+                for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value === saved) { sel.value = saved; break; }
+                }
+            }
+            sel.addEventListener('change', function() {
+                try { localStorage.setItem('selectedMitarbeiter', sel.value); } catch (e) {}
+            });
+        })();
+        </script>
     `);
 }
 
