@@ -6,7 +6,7 @@ const port = process.env.PORT || 10000;
 
 // Slack-Tokens (bei Render unter Environment eintragen, nicht in den Code schreiben):
 //   USER_TOKEN = Benutzer-Token (xoxp-) fürs Lesen und Setzen der Status (früher SLACK_TOKEN, wird als Ersatz weiter gelesen)
-//   BOT_TOKEN  = Bot-Token (xoxb-) für die Meldungen in #hausmeister (früher HAUSMEISTER_SLACK_TOKEN)
+//   BOT_TOKEN  = Bot-Token (xoxb-) für die Meldungen in #hausmeister (früher HAUSMEISTER_SLACK_TOKEN); ohne ihn gibt es keine Meldungen
 const USER_TOKEN = process.env.USER_TOKEN || process.env.SLACK_TOKEN || '';
 const BOT_TOKEN = process.env.BOT_TOKEN || process.env.HAUSMEISTER_SLACK_TOKEN || '';
 
@@ -1173,7 +1173,8 @@ try {
 //   SMTP_HOST, SMTP_PORT, SMTP_SECURE (true/false), SMTP_USER, SMTP_PASS   -> E-Mail-Versand (benötigt "npm install nodemailer")
 //   MAIL_FROM        Absenderadresse (Standard: SMTP_USER)
 //   HAUSMEISTER_SLACK_CHANNEL  Slack-Channel für Meldungen an den Hausmeister (Standard #hausmeister)
-//   BOT_TOKEN                  Slack-Bot-Token (xoxb-) für die Meldungen; ohne ihn wird USER_TOKEN genutzt (beide werden im Hauptteil gelesen)
+//   BOT_TOKEN                  Slack-Bot-Token (xoxb-) für die Meldungen (wird im Hauptteil gelesen). Ohne ihn werden keine Meldungen gesendet,
+//                              damit nichts unter dem Namen einer Person erscheint
 //   HAUSMEISTER_MAIL            Optional: Antwortadresse (Reply-To) in den E-Mails an die Auftraggeber
 
 const crypto = require('crypto');
@@ -1422,7 +1423,7 @@ async function sendMail(to, subject, text) {
 
 // ---------- Slack-Benachrichtigung des Hausmeisters ----------
 const HAUSMEISTER_SLACK_CHANNEL = process.env.HAUSMEISTER_SLACK_CHANNEL || '#hausmeister';
-const HAUSMEISTER_SLACK_TOKEN = BOT_TOKEN || USER_TOKEN; // Bot-Token bevorzugt, sonst Benutzer-Token
+const HAUSMEISTER_SLACK_TOKEN = BOT_TOKEN; // bewusst kein Rückgriff auf USER_TOKEN: Meldungen kommen nur vom Bot
 
 // Sonderzeichen für Slack entschärfen (verhindert z. B. eingeschleuste @channel-/Link-Syntax aus Formulartexten)
 function slackEscape(s) {
@@ -1431,7 +1432,7 @@ function slackEscape(s) {
 
 async function notifyHausmeisterSlack(text) {
     if (!HAUSMEISTER_SLACK_TOKEN) {
-        console.log("Slack-Meldung an den Hausmeister nicht möglich: weder BOT_TOKEN noch USER_TOKEN gesetzt.");
+        console.log("Slack-Meldung an den Hausmeister nicht gesendet: BOT_TOKEN ist nicht gesetzt (Meldungen kommen nur vom Bot, nicht unter dem Namen einer Person).");
         return;
     }
     try {
