@@ -1245,6 +1245,7 @@ function normalizeSheetTicket(r) {
         ort: String(r.ort || ''),
         adresse: String(r.adresse || ''),
         email: String(r.email || ''),
+        dringend: /^(ja|j|yes|1|true|x|dringend)$/i.test(String(r.dringend || '').trim()),
         status,
         history
     };
@@ -1637,6 +1638,14 @@ const ticketStyles = `
   a { color: var(--accent); }
   .topnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .topnav a { padding: 8px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 700; font-size: 0.9rem; }
+  .st-urgent { background: #ff453a; color: #ffffff; }
+  .ticket.urgent { border-left-color: #ff453a; background: rgba(255,69,58,0.08); }
+  .prio-head { font-size: 1rem; margin: 18px 0 8px; }
+  .urgent-toggle { display: inline-block; position: relative; cursor: pointer; margin: 0; }
+  .urgent-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .urgent-toggle span { display: inline-block; padding: 10px 16px; border-radius: 10px; border: 2px solid #ff453a; color: #ff453a; font-weight: 800; }
+  .urgent-toggle input:checked + span { background: #ff453a; color: #ffffff; }
+  .urgent-toggle input:focus-visible + span { outline: 3px solid var(--accent); }
   .embedded .nav-dash { display: none; } /* im Dashboard eingebettet gibt es dort schon eine Navigationsleiste */
 </style>`;
 
@@ -1729,6 +1738,11 @@ function renderTicketForm(values, error) {
                     </div>
                 </div>
 
+                <div style="margin: 14px 0 0;">
+                    <label class="urgent-toggle"><input type="checkbox" name="dringend" value="1"${values.dringend ? ' checked' : ''}><span>🚨 Dringend</span></label>
+                    <span class="hint">&nbsp;Bitte nur bei wirklich eiligen Aufträgen verwenden.</span>
+                </div>
+
                 <label>Ort *</label>
                 <input name="ort" value="${v('ort')}" placeholder="z. B. Gebäude A, Raum 12" required maxlength="150">
 
@@ -1777,7 +1791,8 @@ app.post('/ticket/neu', (req, res) => {
         bis: /^\d{4}-\d{2}-\d{2}$/.test(b.bis || '') ? b.bis : '',
         ort: clip(b.ort, 150),
         adresse: clip(b.adresse, 200),
-        email: clip(b.email, 200)
+        email: clip(b.email, 200),
+        dringend: b.dringend === '1' || b.dringend === 'on'
     };
 
     if (!data.auftraggeber || !data.titel || !data.beschreibung || !data.ort) {
@@ -1815,7 +1830,7 @@ app.post('/ticket/neu', (req, res) => {
     notifyAuftraggeberNeu(ticket, base);
 
     notifyHausmeisterSlack(
-        `:wrench: *Neuer Hausmeisterauftrag* \`${ticket.nr}\`\n` +
+        `${ticket.dringend ? ':rotating_light: *DRINGENDER Hausmeisterauftrag*' : ':wrench: *Neuer Hausmeisterauftrag*'} \`${ticket.nr}\`\n` +
         `*${slackEscape(ticket.titel)}*\n` +
         `Von: ${slackEscape(ticket.auftraggeber)} (${slackEscape(ticket.email)})\n` +
         `Ort: ${slackEscape(ticket.ort)}${ticket.adresse ? ', ' + slackEscape(ticket.adresse) : ''}\n` +
@@ -1865,7 +1880,7 @@ app.get('/ticket/status', async (req, res) => {
     res.send(ticketPage('Ticket ' + t.nr, `
         <h1>🔧 Auftrag ${escapeHtml(t.nr)}</h1>
         <div class="box">
-            <span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}" style="font-size: 1.1rem;">${escapeHtml(t.status)}</span>
+            <span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}" style="font-size: 1.1rem;">${escapeHtml(t.status)}</span>${t.dringend ? ' <span class="badge st-urgent" style="font-size: 1.1rem;">🚨 Dringend</span>' : ''}
             <h2 style="margin-top: 12px;">${escapeHtml(t.titel)}</h2>
             <div class="t-desc">${escapeHtml(t.beschreibung)}</div>
             <div class="t-info">
@@ -1975,6 +1990,19 @@ app.post('/ticket/stornieren', async (req, res) => {
 // ---------- Hausmeister-Übersicht ----------
 const HM_FILTERS = ['offen', 'erledigt', 'storniert', 'alle'];
 
+// Dringlichkeit: 0 = dringend, 1 = Frist innerhalb einer Woche (oder überfällig), 2 = alles andere
+function weekAhead(today) {
+    const d = new Date(today + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 7);
+    return d.toISOString().slice(0, 10);
+}
+function ticketPriority(t, today) {
+    if (t.dringend) return 0;
+    if (t.bis && t.bis <= weekAhead(today)) return 1;
+    return 2;
+}
+const PRIO_LABELS = ['🚨 Dringend', '📅 Frist innerhalb einer Woche (oder überfällig)', 'Weitere Aufträge'];
+
 function renderHausmeisterTicket(t, f, today) {
     const overdue = t.bis && t.bis < today && t.status !== 'Erledigt' && t.status !== 'Storniert';
     const last = t.history[t.history.length - 1] || {};
@@ -1987,13 +2015,13 @@ function renderHausmeisterTicket(t, f, today) {
     const mailSubject = encodeURIComponent(`Hausmeisterauftrag ${t.nr}: ${t.titel}`);
 
     return `
-    <div class="box ticket b-${TICKET_STATUS_CLASS[t.status] || 'st-wait'}" id="${escapeHtml(t.nr)}">
+    <div class="box ticket b-${TICKET_STATUS_CLASS[t.status] || 'st-wait'}${(t.dringend && t.status !== 'Erledigt' && t.status !== 'Storniert') ? ' urgent' : ''}" id="${escapeHtml(t.nr)}">
         <div class="t-head">
             <div>
                 <div class="t-title">${escapeHtml(t.titel)}</div>
                 <div class="t-meta">${escapeHtml(t.nr)} · eingegangen ${escapeHtml(formatTs(t.createdAt))}</div>
             </div>
-            <span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}">${escapeHtml(t.status)}</span>
+            <div>${t.dringend ? '<span class="badge st-urgent">🚨 DRINGEND</span> ' : ''}<span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}">${escapeHtml(t.status)}</span></div>
         </div>
         <div class="t-desc">${escapeHtml(t.beschreibung)}</div>
         <div class="t-info">
@@ -2022,18 +2050,34 @@ app.get('/hausmeister', async (req, res) => {
         if (f === 'storniert') return t.status === 'Storniert';
         return t.status !== 'Erledigt' && t.status !== 'Storniert'; // offen
     });
+    // Reihenfolge: offene Aufträge zuerst (1. dringend, 2. Frist innerhalb einer Woche oder überfällig, 3. Rest),
+    // darin nach Frist, danach die abgeschlossenen (neueste zuerst)
+    const isClosed = t => t.status === 'Erledigt' || t.status === 'Storniert';
     list.sort((a, b) => {
-        if (f === 'offen') {
-            const da = a.bis || '9999-99-99';
-            const db = b.bis || '9999-99-99';
-            return da.localeCompare(db) || a.createdAt.localeCompare(b.createdAt);
-        }
-        return b.createdAt.localeCompare(a.createdAt);
+        if (isClosed(a) !== isClosed(b)) return isClosed(a) ? 1 : -1;
+        if (isClosed(a)) return b.createdAt.localeCompare(a.createdAt);
+        const pa = ticketPriority(a, today);
+        const pb = ticketPriority(b, today);
+        if (pa !== pb) return pa - pb;
+        const da = a.bis || '9999-99-99';
+        const db = b.bis || '9999-99-99';
+        return da.localeCompare(db) || a.createdAt.localeCompare(b.createdAt);
     });
 
     const cnt = s => tickets.filter(t => t.status === s).length;
     const openCount = tickets.filter(t => t.status !== 'Erledigt' && t.status !== 'Storniert').length;
-    const cards = list.map(t => renderHausmeisterTicket(t, f, today)).join('');
+    let cards = '';
+    let lastPrio = -1;
+    list.forEach(t => {
+        if (f === 'offen') {
+            const pr = ticketPriority(t, today);
+            if (pr !== lastPrio) {
+                cards += `<h2 class="prio-head">${escapeHtml(PRIO_LABELS[pr])}</h2>`;
+                lastPrio = pr;
+            }
+        }
+        cards += renderHausmeisterTicket(t, f, today);
+    });
 
     res.send(ticketPage('Hausmeister Aufträge', `
         <h1>🔧 Hausmeister – Aufträge</h1>
