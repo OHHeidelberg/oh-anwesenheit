@@ -1169,6 +1169,7 @@ try {
 //   HAUSMEISTER_SLACK_CHANNEL  Slack-Channel für Meldungen an den Hausmeister (Standard #hausmeister)
 //   BOT_TOKEN                  Slack-Bot-Token (xoxb-) für die Meldungen (wird im Hauptteil gelesen). Ohne ihn werden keine Meldungen gesendet,
 //                              damit nichts unter dem Namen einer Person erscheint
+//   Rückfragen und Statusänderungen gehen zusätzlich als Slack-Direktnachricht des Bots an den Auftraggeber (Slack-ID aus der Anwesenheitstabelle)
 //   HAUSMEISTER_MAIL            Optional: Antwortadresse (Reply-To) in den E-Mails an die Auftraggeber
 
 const crypto = require('crypto');
@@ -1420,28 +1421,62 @@ async function sendMail(to, subject, text) {
 
 // ---------- Slack-Benachrichtigung des Hausmeisters ----------
 const HAUSMEISTER_SLACK_CHANNEL = process.env.HAUSMEISTER_SLACK_CHANNEL || '#hausmeister';
-const HAUSMEISTER_SLACK_TOKEN = BOT_TOKEN; // bewusst kein Rückgriff auf USER_TOKEN: Meldungen kommen nur vom Bot
 
 // Sonderzeichen für Slack entschärfen (verhindert z. B. eingeschleuste @channel-/Link-Syntax aus Formulartexten)
 function slackEscape(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-async function notifyHausmeisterSlack(text) {
-    if (!HAUSMEISTER_SLACK_TOKEN) {
-        console.log("Slack-Meldung an den Hausmeister nicht gesendet: BOT_TOKEN ist nicht gesetzt (Meldungen kommen nur vom Bot, nicht unter dem Namen einer Person).");
-        return;
+async function slackPost(channel, text, label) {
+    if (!BOT_TOKEN) {
+        console.log(`Slack-Meldung (${label}) nicht gesendet: BOT_TOKEN ist nicht gesetzt (Meldungen kommen nur vom Bot, nicht unter dem Namen einer Person).`);
+        return false;
     }
     try {
         const r = await axios.post('https://slack.com/api/chat.postMessage',
-            { channel: HAUSMEISTER_SLACK_CHANNEL, text, unfurl_links: false, unfurl_media: false },
-            { headers: { Authorization: `Bearer ${HAUSMEISTER_SLACK_TOKEN}` }, timeout: 10000 });
-        if (!r.data || !r.data.ok) {
-            console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", (r.data && r.data.error) || "ungültige Antwort");
-        }
+            { channel, text, unfurl_links: false, unfurl_media: false },
+            { headers: { Authorization: `Bearer ${BOT_TOKEN}` }, timeout: 10000 });
+        if (r.data && r.data.ok) return true;
+        console.log(`Slack-Meldung (${label}) fehlgeschlagen:`, (r.data && r.data.error) || 'ungültige Antwort');
     } catch (e) {
-        console.log("Slack-Meldung an den Hausmeister fehlgeschlagen:", describeError(e));
+        console.log(`Slack-Meldung (${label}) fehlgeschlagen:`, describeError(e));
     }
+    return false;
+}
+
+// Meldung in den Hausmeister-Channel
+function notifyHausmeisterSlack(text) {
+    return slackPost(HAUSMEISTER_SLACK_CHANNEL, text, 'Hausmeister');
+}
+
+// Slack-ID des Auftraggebers aus der Anwesenheitstabelle (leer, wenn keine hinterlegt ist)
+function findSlackId(name) {
+    const list = (typeof cachedData !== 'undefined' && Array.isArray(cachedData)) ? cachedData : [];
+    const p = list.find(x => x && x.n === name);
+    const id = p && p.id ? String(p.id).trim() : '';
+    return id && id.toLowerCase() !== 'kein' ? id : '';
+}
+
+function quoteForSlack(text) {
+    return slackEscape(text).split('\n').map(l => '> ' + l).join('\n');
+}
+
+// Direktnachricht vom Bot an den Auftraggeber bei Statusänderungen durch den Hausmeister (Rückfragen inklusive)
+async function notifyAuftraggeberSlack(t, status, note, base) {
+    const userId = findSlackId(t.auftraggeber);
+    if (!userId) return false;
+    const link = `${base}/ticket/status?nr=${encodeURIComponent(t.nr)}`;
+    let text;
+    if (status === 'Rückfrage offen') {
+        text = `:question: *Rückfrage zu Ihrem Hausmeisterauftrag* \`${t.nr}\`\n*${slackEscape(t.titel)}*\n` +
+            (note ? `${quoteForSlack(note)}\n` : '') +
+            `<${link}|Auftrag öffnen und antworten>`;
+    } else {
+        text = `:wrench: Ihr Hausmeisterauftrag \`${t.nr}\` *${slackEscape(t.titel)}*\nNeuer Status: *${status}*\n` +
+            (note ? `${quoteForSlack(note)}\n` : '') +
+            `<${link}|Status ansehen>`;
+    }
+    return slackPost(userId, text, 'Auftraggeber');
 }
 
 // Fehlertext mit allen Details (bei Netzwerkfehlern ist e.message oft leer, dann stehen Code und Ursachen in e.code / e.errors)
@@ -1791,6 +1826,8 @@ app.get('/ticket/status', async (req, res) => {
             ${h.note ? `<div>${escapeHtml(h.note)}</div>` : ''}
         </li>`).join('');
 
+    const lastQ = [...t.history].reverse().find(h => h.status === 'Rückfrage offen');
+
     res.send(ticketPage('Ticket ' + t.nr, `
         <h1>🔧 Auftrag ${escapeHtml(t.nr)}</h1>
         <div class="box">
@@ -1808,6 +1845,17 @@ app.get('/ticket/status', async (req, res) => {
             <h2>Verlauf</h2>
             <ul class="timeline">${history}</ul>
         </div>
+        ${t.status === 'Rückfrage offen' ? `
+        <div class="box">
+            <h2>Rückfrage des Hausmeisters</h2>
+            ${lastQ && lastQ.note ? `<div class="t-desc">${escapeHtml(lastQ.note)}</div>` : ''}
+            <form method="POST" action="/ticket/antwort">
+                <input type="hidden" name="nr" value="${escapeHtml(t.nr)}">
+                <label>Ihre Antwort *</label>
+                <textarea name="antwort" required maxlength="1000"></textarea>
+                <button type="submit" class="btn">Antwort senden</button>
+            </form>
+        </div>` : ''}
         ${(t.status !== 'Erledigt' && t.status !== 'Storniert') ? `
         <div class="box">
             <h2>Auftrag stornieren</h2>
@@ -1822,6 +1870,39 @@ app.get('/ticket/status', async (req, res) => {
         <a class="btn" href="/ticket/status?nr=${encodeURIComponent(t.nr)}">Aktualisieren</a>
         <a class="btn secondary" href="/ticket">Zurück</a>
     `));
+});
+
+// Status, den das Ticket vor der Rückfrage hatte (nach der Antwort geht es dorthin zurück)
+function statusBeforeQuestion(t) {
+    for (let i = t.history.length - 1; i >= 0; i--) {
+        const st = t.history[i].status;
+        if (st !== 'Rückfrage offen') return (st === 'Erledigt' || st === 'Storniert') ? 'Warteschlange' : st;
+    }
+    return 'Warteschlange';
+}
+
+app.post('/ticket/antwort', async (req, res) => {
+    await refreshTicketsQuick();
+    const b = req.body || {};
+    const t = tickets.find(x => x.nr === normalizeNr(b.nr));
+    if (!t) return res.redirect('/ticket');
+    const back = '/ticket/status?nr=' + encodeURIComponent(t.nr);
+    const antwort = clip(b.antwort, 1000);
+    if (t.status !== 'Rückfrage offen' || !antwort) return res.redirect(back);
+
+    const neuerStatus = statusBeforeQuestion(t);
+    t.status = neuerStatus;
+    t.history.push({ ts: new Date().toISOString(), status: neuerStatus, note: 'Antwort des Auftraggebers: ' + antwort });
+    ticketsVersion++;
+    saveTickets();
+    pushTicket(t);
+
+    notifyHausmeisterSlack(
+        `:speech_balloon: *Antwort auf Rückfrage* \`${t.nr}\`\n` +
+        `*${slackEscape(t.titel)}* von ${slackEscape(t.auftraggeber)}\n` +
+        `${quoteForSlack(antwort)}\n` +
+        `<${baseUrl(req)}/hausmeister|Zur Übersicht>`);
+    res.redirect(back);
 });
 
 app.post('/ticket/stornieren', async (req, res) => {
@@ -1890,7 +1971,7 @@ function renderHausmeisterTicket(t, f, today) {
         <form method="POST" action="/hausmeister/status">
             <input type="hidden" name="nr" value="${escapeHtml(t.nr)}">
             <input type="hidden" name="f" value="${escapeHtml(f)}">
-            <input type="text" name="note" maxlength="500" placeholder="Anmerkung oder Rückfrage an den Auftraggeber (optional, wird per E-Mail mitgeschickt)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
+            <input type="text" name="note" maxlength="500" placeholder="Anmerkung oder Rückfrage an den Auftraggeber (optional, geht per Slack und E-Mail an ihn)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); }">
             <div class="st-buttons">${buttons}</div>
         </form>
     </div>`;
@@ -1966,7 +2047,8 @@ app.post('/hausmeister/status', (req, res) => {
             `Neuer Status: ${status}\n` +
             (note ? `Anmerkung: ${note}\n` : '') +
             `\nStatus abrufen: ${link}\n` +
-            (status === 'Rückfrage offen' ? `\nBitte antworten Sie auf diese E-Mail, um die Rückfrage zu beantworten.\n` : ''));
+            (status === 'Rückfrage offen' ? `\nBitte antworten Sie über die Statusseite (Link oben), um die Rückfrage zu beantworten.\n` : ''));
+        notifyAuftraggeberSlack(t, status, note, baseUrl(req));
     }
     res.redirect(back);
 });
@@ -1983,3 +2065,4 @@ if (sheetEnabled) {
 app.listen(port, () => {
     console.log(`Server läuft auf Port ${port}`);
 });
+
