@@ -1245,7 +1245,8 @@ function normalizeSheetTicket(r) {
         ort: String(r.ort || ''),
         adresse: String(r.adresse || ''),
         email: String(r.email || ''),
-        dringend: /^(ja|j|yes|1|true|x|dringend)$/i.test(String(r.dringend || '').trim()),
+        // undefined = ältere Skriptversion ohne Spalte "Dringend" (dann bleibt der lokale Wert erhalten)
+        dringend: r.dringend === undefined ? undefined : /^(ja|j|yes|1|true|x|dringend)$/i.test(String(r.dringend || '').trim()),
         status,
         history
     };
@@ -1298,6 +1299,14 @@ async function loadTicketsFromSheet() {
         if (ticketsVersion !== versionAtStart) return;
 
         const fromSheet = r.data.tickets.map(normalizeSheetTicket).filter(Boolean).filter(t => !unsynced.has(t.nr));
+
+        // Ältere Skriptversion ohne Spalte "Dringend": die Kennzeichnung nicht verlieren
+        fromSheet.forEach(t => {
+            if (t.dringend === undefined) {
+                const local = tickets.find(x => x.nr === t.nr);
+                t.dringend = !!(local && local.dringend);
+            }
+        });
 
         // Status wurde von Hand im Sheet geändert -> im Verlauf festhalten (wichtig z. B. für die Archivierung)
         const changedByHand = [];
@@ -1814,6 +1823,7 @@ app.post('/ticket/neu', (req, res) => {
     ticketsVersion++;
     saveTickets();
     pushTicket(ticket);
+    console.log(`Ticket ${ticket.nr} angelegt (Auftraggeber: ${ticket.auftraggeber}, dringend: ${ticket.dringend ? 'ja' : 'nein'}).`);
 
     const base = baseUrl(req);
     const statusLink = `${base}/ticket/status?nr=${encodeURIComponent(ticket.nr)}`;
