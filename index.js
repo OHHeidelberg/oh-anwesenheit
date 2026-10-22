@@ -347,6 +347,9 @@ const styles = `
   .nav-bar { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 2px; }
   .nav-btn, .theme-btn { text-decoration: none; background: var(--nav-btn-bg); color: var(--text-color); padding: 6px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; border: 1px solid var(--border-color); cursor: pointer; }
 
+  .nav-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 3px 8px; border: 1px dashed var(--border-color); border-radius: 14px; }
+  .nav-group-label { font-size: 0.65rem; font-weight: 800; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; }
+
   .footer-bar { height: 6vh; min-height: 45px; background: var(--card-bg); margin-top: 2px; padding: 0 12px; display: flex; justify-content: center; align-items: center; gap: 8px; border-radius: 12px; border: 1px solid var(--border-color); flex-shrink: 0; }
   
   select, button, input { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); padding: 6px; border-radius: 8px; font-size: 0.85rem; }
@@ -911,9 +914,13 @@ app.get('/admin99', (req, res) => {
                 <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
                 <a href="/ticket" class="nav-btn" onclick="return openEmbed(this)">🔧 Hausmeister</a>
-                <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
-                <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
                 <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
+                <div class="nav-group">
+                    <span class="nav-group-label">Admin</span>
+                    <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
+                    <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
+                    <a href="/hausmeister" class="nav-btn" onclick="return openEmbed(this)">📋 HM Liste</a>
+                </div>
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid dash-part">${cards}</div>
