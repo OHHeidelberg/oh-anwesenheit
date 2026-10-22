@@ -1252,7 +1252,7 @@ async function pushTicket(ticket) {
         const payload = { token: TICKET_SHEET_TOKEN, action: 'save', ticket: { ...ticket, note: last.note || '' } };
         const r = await withRetry(() => axios.post(TICKET_SHEET_URL, JSON.stringify(payload), {
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            timeout: 20000,
+            timeout: 45000,
             maxRedirects: 5,
             family: 4 // IPv4 erzwingen (vermeidet Timeouts bei defektem IPv6-Weg)
         }), 2);
@@ -1274,12 +1274,14 @@ async function loadTicketsFromSheet() {
     lastSheetLoad = Date.now();
     const versionAtStart = ticketsVersion;
     try {
+        const t0 = Date.now();
         const r = await withRetry(() => axios.get(TICKET_SHEET_URL, {
             params: { token: TICKET_SHEET_TOKEN, action: 'list' },
-            timeout: 20000,
+            timeout: 45000,
             maxRedirects: 5,
             family: 4
         }), 2);
+        if (Date.now() - t0 > 8000) console.log(`Hinweis: Das Sheet hat ${Math.round((Date.now() - t0) / 1000)} Sekunden zum Antworten gebraucht.`);
         if (!r.data || !r.data.ok || !Array.isArray(r.data.tickets)) {
             console.log("Tickets konnten nicht aus dem Sheet gelesen werden:", (r.data && r.data.error) || "ungültige Antwort (Bereitstellung des Apps Scripts prüfen)");
             return;
@@ -1346,7 +1348,7 @@ async function archiveOldTickets() {
             // Im Sheet wandern die Zeilen ins Blatt "Hausmeister-Archiv"
             const r = await withRetry(() => axios.post(TICKET_SHEET_URL, JSON.stringify({ token: TICKET_SHEET_TOKEN, action: 'archive', nrs }), {
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                timeout: 30000,
+                timeout: 60000,
                 maxRedirects: 5,
                 family: 4
             }), 2);
@@ -1461,10 +1463,30 @@ function quoteForSlack(text) {
     return slackEscape(text).split('\n').map(l => '> ' + l).join('\n');
 }
 
+// Direktnachricht mit der Ticketnummer direkt nach dem Anlegen
+async function notifyAuftraggeberNeu(t, base) {
+    const userId = findSlackId(t.auftraggeber);
+    if (!userId) {
+        console.log(`Keine Direktnachricht an "${t.auftraggeber}" (${t.nr}): In der Anwesenheitstabelle ist keine Slack-ID hinterlegt oder der Name stimmt nicht überein.`);
+        return false;
+    }
+    const link = `${base}/ticket/status?nr=${encodeURIComponent(t.nr)}`;
+    const text = `:white_check_mark: *Ihr Hausmeisterauftrag wurde aufgenommen*\n` +
+        `Ticketnummer: \`${t.nr}\`\n` +
+        `*${slackEscape(t.titel)}*\n` +
+        `Mit der Ticketnummer können Sie den Status jederzeit abrufen: <${link}|Status ansehen>`;
+    const sent = await slackPost(userId, text, 'Auftraggeber');
+    if (sent) console.log(`Direktnachricht an "${t.auftraggeber}" gesendet (${t.nr}, neu).`);
+    return sent;
+}
+
 // Direktnachricht vom Bot an den Auftraggeber bei Statusänderungen durch den Hausmeister (Rückfragen inklusive)
 async function notifyAuftraggeberSlack(t, status, note, base) {
     const userId = findSlackId(t.auftraggeber);
-    if (!userId) return false;
+    if (!userId) {
+        console.log(`Keine Direktnachricht an "${t.auftraggeber}" (${t.nr}): In der Anwesenheitstabelle ist keine Slack-ID hinterlegt oder der Name stimmt nicht überein.`);
+        return false;
+    }
     const link = `${base}/ticket/status?nr=${encodeURIComponent(t.nr)}`;
     let text;
     if (status === 'Rückfrage offen') {
@@ -1476,7 +1498,9 @@ async function notifyAuftraggeberSlack(t, status, note, base) {
             (note ? `${quoteForSlack(note)}\n` : '') +
             `<${link}|Status ansehen>`;
     }
-    return slackPost(userId, text, 'Auftraggeber');
+    const sent = await slackPost(userId, text, 'Auftraggeber');
+    if (sent) console.log(`Direktnachricht an "${t.auftraggeber}" gesendet (${t.nr}, ${status}).`);
+    return sent;
 }
 
 // Fehlertext mit allen Details (bei Netzwerkfehlern ist e.message oft leer, dann stehen Code und Ursachen in e.code / e.errors)
@@ -1781,6 +1805,8 @@ app.post('/ticket/neu', (req, res) => {
         `Status abrufen: ${statusLink}\n\n` +
         `Bei Statusänderungen und Rückfragen melden wir uns an diese Adresse.`);
 
+    notifyAuftraggeberNeu(ticket, base);
+
     notifyHausmeisterSlack(
         `:wrench: *Neuer Hausmeisterauftrag* \`${ticket.nr}\`\n` +
         `*${slackEscape(ticket.titel)}*\n` +
@@ -1797,6 +1823,7 @@ app.post('/ticket/neu', (req, res) => {
             <div class="nr">${escapeHtml(ticket.nr)}</div>
             <p>Bitte notieren Sie sich die Nummer. Damit können Sie den Status jederzeit unter „Hausmeister“ abrufen.</p>
             ${mailer ? `<p class="hint">Eine Bestätigung wird an ${escapeHtml(ticket.email)} gesendet.</p>` : ''}
+            ${(BOT_TOKEN && findSlackId(ticket.auftraggeber)) ? `<p class="hint">Die Ticketnummer wird Ihnen zusätzlich als Slack-Direktnachricht geschickt.</p>` : ''}
             <a class="btn" href="/ticket/status?nr=${encodeURIComponent(ticket.nr)}">Status anzeigen</a>
             <a class="btn secondary" href="/ticket">Neuer Auftrag</a>
         </div>
@@ -2065,4 +2092,3 @@ if (sheetEnabled) {
 app.listen(port, () => {
     console.log(`Server läuft auf Port ${port}`);
 });
-
