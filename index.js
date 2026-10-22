@@ -1249,11 +1249,12 @@ async function pushTicket(ticket) {
     try {
         const last = ticket.history[ticket.history.length - 1] || {};
         const payload = { token: TICKET_SHEET_TOKEN, action: 'save', ticket: { ...ticket, note: last.note || '' } };
-        const r = await axios.post(TICKET_SHEET_URL, JSON.stringify(payload), {
+        const r = await withRetry(() => axios.post(TICKET_SHEET_URL, JSON.stringify(payload), {
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             timeout: 20000,
-            maxRedirects: 5
-        });
+            maxRedirects: 5,
+            family: 4 // IPv4 erzwingen (vermeidet Timeouts bei defektem IPv6-Weg)
+        }), 2);
         if (r.data && r.data.ok) {
             unsynced.delete(ticket.nr);
         } else {
@@ -1272,11 +1273,12 @@ async function loadTicketsFromSheet() {
     lastSheetLoad = Date.now();
     const versionAtStart = ticketsVersion;
     try {
-        const r = await axios.get(TICKET_SHEET_URL, {
+        const r = await withRetry(() => axios.get(TICKET_SHEET_URL, {
             params: { token: TICKET_SHEET_TOKEN, action: 'list' },
             timeout: 20000,
-            maxRedirects: 5
-        });
+            maxRedirects: 5,
+            family: 4
+        }), 2);
         if (!r.data || !r.data.ok || !Array.isArray(r.data.tickets)) {
             console.log("Tickets konnten nicht aus dem Sheet gelesen werden:", (r.data && r.data.error) || "ungültige Antwort (Bereitstellung des Apps Scripts prüfen)");
             return;
@@ -1341,11 +1343,12 @@ async function archiveOldTickets() {
         let done = false;
         if (sheetEnabled) {
             // Im Sheet wandern die Zeilen ins Blatt "Hausmeister-Archiv"
-            const r = await axios.post(TICKET_SHEET_URL, JSON.stringify({ token: TICKET_SHEET_TOKEN, action: 'archive', nrs }), {
+            const r = await withRetry(() => axios.post(TICKET_SHEET_URL, JSON.stringify({ token: TICKET_SHEET_TOKEN, action: 'archive', nrs }), {
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 timeout: 30000,
-                maxRedirects: 5
-            });
+                maxRedirects: 5,
+                family: 4
+            }), 2);
             done = !!(r.data && r.data.ok);
             if (!done) console.log("Archivierung im Sheet fehlgeschlagen:", (r.data && r.data.error) || "ungültige Antwort (Apps Script aktualisiert und neu veröffentlicht?)");
         } else {
@@ -1453,6 +1456,20 @@ function describeError(e) {
         });
     }
     return parts.length ? parts.join(' | ') : String(e);
+}
+
+// Netzwerkaufrufe bei Verbindungsfehlern (z. B. ETIMEDOUT) einmal wiederholen
+async function withRetry(fn, tries) {
+    let lastErr;
+    for (let i = 0; i < tries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            lastErr = e;
+            if (i < tries - 1) await new Promise(r => setTimeout(r, 1500));
+        }
+    }
+    throw lastErr;
 }
 
 function clip(v, max) {
