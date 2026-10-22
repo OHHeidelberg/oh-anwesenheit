@@ -1647,6 +1647,8 @@ const ticketStyles = `
   a { color: var(--accent); }
   .topnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .topnav a { padding: 8px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 700; font-size: 0.9rem; }
+  .st-overdue { background: #ff9f0a; color: #000000; }
+  .ticket.overdue-card { border-left-color: #ff9f0a; }
   .st-urgent { background: #ff453a; color: #ffffff; }
   .ticket.urgent { border-left-color: #ff453a; background: rgba(255,69,58,0.08); }
   .prio-head { font-size: 1rem; margin: 18px 0 8px; }
@@ -2025,13 +2027,13 @@ function renderHausmeisterTicket(t, f, today) {
     const mailSubject = encodeURIComponent(`Hausmeisterauftrag ${t.nr}: ${t.titel}`);
 
     return `
-    <div class="box ticket b-${TICKET_STATUS_CLASS[t.status] || 'st-wait'}${(t.dringend && t.status !== 'Erledigt' && t.status !== 'Storniert') ? ' urgent' : ''}" id="${escapeHtml(t.nr)}">
+    <div class="box ticket b-${TICKET_STATUS_CLASS[t.status] || 'st-wait'}${(t.dringend && t.status !== 'Erledigt' && t.status !== 'Storniert') ? ' urgent' : ''}${overdue ? ' overdue-card' : ''}" id="${escapeHtml(t.nr)}">
         <div class="t-head">
             <div>
                 <div class="t-title">${escapeHtml(t.titel)}</div>
                 <div class="t-meta">${escapeHtml(t.nr)} · eingegangen ${escapeHtml(formatTs(t.createdAt))}</div>
             </div>
-            <div>${t.dringend ? '<span class="badge st-urgent">🚨 DRINGEND</span> ' : ''}<span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}">${escapeHtml(t.status)}</span></div>
+            <div>${t.dringend ? '<span class="badge st-urgent">🚨 DRINGEND</span> ' : ''}${overdue ? '<span class="badge st-overdue">⏰ ÜBERFÄLLIG</span> ' : ''}<span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}">${escapeHtml(t.status)}</span></div>
         </div>
         <div class="t-desc">${escapeHtml(t.beschreibung)}</div>
         <div class="t-info">
@@ -2098,7 +2100,7 @@ app.get('/hausmeister', async (req, res) => {
             <a class="tab${f === 'alle' ? ' active' : ''}" href="/hausmeister?f=alle">Alle (${tickets.length})</a>
             <a class="tab" href="/ticket">➕ Auftrag erfassen</a>
         </div>
-        <p class="hint">Warteschlange: ${cnt('Warteschlange')} · In Arbeit: ${cnt('In Arbeit')} · Rückfrage offen: ${cnt('Rückfrage offen')}</p>
+        <p class="hint">Warteschlange: ${cnt('Warteschlange')} · In Arbeit: ${cnt('In Arbeit')} · Rückfrage offen: ${cnt('Rückfrage offen')} · 🚨 Dringend: ${tickets.filter(t => t.dringend && t.status !== 'Erledigt' && t.status !== 'Storniert').length} · ⏰ Überfällig: ${tickets.filter(t => t.bis && t.bis < today && t.status !== 'Erledigt' && t.status !== 'Storniert').length}</p>
         ${(f === 'erledigt' || f === 'storniert') ? `<p class="hint">Aufträge, die seit mehr als ${ARCHIVE_AFTER_MONTHS} Monaten erledigt oder storniert sind, werden automatisch archiviert (Blatt "Hausmeister-Archiv").</p>` : ''}
         ${cards || '<div class="box">Keine Aufträge in dieser Ansicht.</div>'}
         <script>
