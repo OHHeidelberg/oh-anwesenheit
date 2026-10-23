@@ -1661,6 +1661,8 @@ const ticketStyles = `
   .urgent-toggle span { display: inline-block; padding: 10px 16px; border-radius: 10px; border: 2px solid #ff453a; color: #ff453a; font-weight: 800; }
   .urgent-toggle input:checked + span { background: #ff453a; color: #ffffff; }
   .urgent-toggle input:focus-visible + span { outline: 3px solid var(--accent); }
+  .topnav a.nav-active { border-color: var(--accent); color: var(--accent); }
+  .embedded .hm-nav { display: none; }
   .embedded .nav-dash { display: none; } /* im Dashboard eingebettet gibt es dort schon eine Navigationsleiste */
 </style>`;
 
@@ -1670,6 +1672,16 @@ const ticketNav = `
     <a href="/dashboard" target="_top" class="nav-dash">🏠 Dashboard</a>
     <a href="/ticket">➕ Neuer Auftrag</a>
     <a href="/ticket#status">🔍 Status abrufen</a>
+</div>`;
+
+// Navigationsleiste der Hausmeister-Ansicht (/hausmeister): Dashboard, Krank, Urlaub und die Standardansicht "Hausmeister".
+// Eingebettet im Dashboard (z. B. über "HM Liste") wird sie ausgeblendet, dort gibt es oben schon die Dashboard-Leiste.
+const hausmeisterNav = `
+<div class="topnav hm-nav">
+    <a href="/dashboard" target="_top">🏠 Dashboard</a>
+    <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" rel="noopener">🤒 Krank</a>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" rel="noopener">🌴 Urlaub</a>
+    <a href="/hausmeister" class="nav-active">🔧 Hausmeister</a>
 </div>`;
 
 function ticketPage(title, bodyHtml, wide, noNav) {
@@ -2180,6 +2192,7 @@ app.get('/hausmeister', async (req, res) => {
     });
 
     res.send(ticketPage('Hausmeister Aufträge', `
+        ${hausmeisterNav}
         <h1>🔧 Hausmeister – Aufträge</h1>
         <div class="tabs">
             <a class="tab${f === 'offen' ? ' active' : ''}" href="/hausmeister?f=offen">Offen (${openCount})</a>
