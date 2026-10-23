@@ -1213,6 +1213,7 @@ const sheetEnabled = !!(TICKET_SHEET_URL && TICKET_SHEET_TOKEN);
 const ARCHIVE_AFTER_MONTHS = parseInt(process.env.ARCHIVE_AFTER_MONTHS || '3', 10);
 const ARCHIVE_FILE = process.env.TICKETS_ARCHIVE_FILE || './tickets_archiv.json'; // nur ohne Sheet-Anbindung
 const unsynced = new Set(); // Tickets, die noch nicht erfolgreich ins Sheet geschrieben wurden
+tickets.forEach(t => { if (t && t.fieldsDirty > 0) unsynced.add(t.nr); }); // geänderte Angaben, die noch nicht im Sheet stehen
 let ticketsVersion = 0;     // zählt lokale Änderungen (schützt vor veralteten Abfrageergebnissen)
 let lastSheetLoad = 0;      // Zeitpunkt der letzten Abfrage des Sheets
 let sheetLoadPromise = null;
@@ -1258,7 +1259,8 @@ async function pushTicket(ticket) {
     unsynced.add(ticket.nr);
     try {
         const last = ticket.history[ticket.history.length - 1] || {};
-        const payload = { token: TICKET_SHEET_TOKEN, action: 'save', ticket: { ...ticket, note: last.note || '' } };
+        const sentRev = ticket.fieldsDirty || 0;
+        const payload = { token: TICKET_SHEET_TOKEN, action: 'save', ticket: { ...ticket, note: last.note || '', overwriteFields: sentRev > 0 } };
         const r = await withRetry(() => axios.post(TICKET_SHEET_URL, JSON.stringify(payload), {
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             timeout: 45000,
@@ -1267,6 +1269,7 @@ async function pushTicket(ticket) {
         }), 2);
         if (r.data && r.data.ok) {
             unsynced.delete(ticket.nr);
+            if (sentRev > 0 && (ticket.fieldsDirty || 0) === sentRev) { ticket.fieldsDirty = 0; saveTickets(); }
         } else {
             console.log("Ticket konnte nicht ins Sheet geschrieben werden:", (r.data && r.data.error) || "ungültige Antwort (Bereitstellung des Apps Scripts prüfen: Zugriff = Jeder)");
         }
@@ -1647,6 +1650,7 @@ const ticketStyles = `
   a { color: var(--accent); }
   .topnav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .topnav a { padding: 8px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 700; font-size: 0.9rem; }
+  .okmsg { background: rgba(50,215,75,0.15); color: #25a244; padding: 10px; border-radius: 10px; margin-bottom: 12px; font-weight: 700; }
   .st-overdue { background: #ff9f0a; color: #000000; }
   .ticket.overdue-card { border-left-color: #ff9f0a; }
   .st-urgent { background: #ff453a; color: #ffffff; }
@@ -1887,10 +1891,12 @@ app.get('/ticket/status', async (req, res) => {
             ${h.note ? `<div>${escapeHtml(h.note)}</div>` : ''}
         </li>`).join('');
 
-    const lastQ = [...t.history].reverse().find(h => h.status === 'Rückfrage offen');
+    const lastQ = [...t.history].reverse().find(h => h.status === 'Rückfrage offen' && h.kind !== 'edit');
 
     res.send(ticketPage('Ticket ' + t.nr, `
         <h1>🔧 Auftrag ${escapeHtml(t.nr)}</h1>
+        ${req.query.gespeichert ? '<div class="okmsg">Die Änderungen wurden gespeichert.</div>' : ''}
+        ${req.query.fehler ? '<div class="error">Nicht gespeichert: Bitte Titel, Beschreibung, Ort und eine gültige E-Mail-Adresse angeben.</div>' : ''}
         <div class="box">
             <span class="badge ${TICKET_STATUS_CLASS[t.status] || 'st-wait'}" style="font-size: 1.1rem;">${escapeHtml(t.status)}</span>${t.dringend ? ' <span class="badge st-urgent" style="font-size: 1.1rem;">🚨 Dringend</span>' : ''}
             <h2 style="margin-top: 12px;">${escapeHtml(t.titel)}</h2>
@@ -1906,6 +1912,37 @@ app.get('/ticket/status', async (req, res) => {
             <h2>Verlauf</h2>
             <ul class="timeline">${history}</ul>
         </div>
+        ${(t.status !== 'Erledigt' && t.status !== 'Storniert') ? `
+        <details class="box">
+            <summary style="cursor: pointer; font-weight: 800;">✏️ Angaben bearbeiten oder ergänzen</summary>
+            <form method="POST" action="/ticket/bearbeiten">
+                <input type="hidden" name="nr" value="${escapeHtml(t.nr)}">
+                <label>Titel *</label>
+                <input name="titel" value="${escapeHtml(t.titel)}" required maxlength="150">
+                <label>Beschreibung *</label>
+                <textarea name="beschreibung" required maxlength="3000">${escapeHtml(t.beschreibung)}</textarea>
+                <label>Ergänzung <span class="opt">(optional, wird mit Datum an die Beschreibung angehängt)</span></label>
+                <textarea name="ergaenzung" maxlength="1000" style="min-height: 70px;"></textarea>
+                <div class="row">
+                    <div>
+                        <label>Bitte erledigen bis <span class="opt">(optional)</span></label>
+                        <input type="date" name="bis" value="${escapeHtml(t.bis || '')}">
+                    </div>
+                    <div>
+                        <label>E-Mail für Rückfragen und Statusmeldungen *</label>
+                        <input type="email" name="email" value="${escapeHtml(t.email)}" required maxlength="200">
+                    </div>
+                </div>
+                <label>Ort *</label>
+                <input name="ort" value="${escapeHtml(t.ort)}" required maxlength="150">
+                <label>Adresse <span class="opt">(optional)</span></label>
+                <input name="adresse" value="${escapeHtml(t.adresse || '')}" maxlength="200">
+                <div style="margin: 14px 0 0;">
+                    <label class="urgent-toggle"><input type="checkbox" name="dringend" value="1"${t.dringend ? ' checked' : ''}><span>🚨 Dringend</span></label>
+                </div>
+                <button type="submit" class="btn">Änderungen speichern</button>
+            </form>
+        </details>` : ''}
         ${t.status === 'Rückfrage offen' ? `
         <div class="box">
             <h2>Rückfrage des Hausmeisters</h2>
@@ -1931,6 +1968,57 @@ app.get('/ticket/status', async (req, res) => {
         <a class="btn" href="/ticket/status?nr=${encodeURIComponent(t.nr)}">Aktualisieren</a>
         <a class="btn secondary" href="/ticket">Zurück</a>
     `));
+});
+
+// Auftraggeber ändert oder ergänzt die Angaben seines (noch offenen) Auftrags
+app.post('/ticket/bearbeiten', async (req, res) => {
+    await refreshTicketsQuick();
+    const b = req.body || {};
+    const t = tickets.find(x => x.nr === normalizeNr(b.nr));
+    if (!t) return res.redirect('/ticket');
+    const back = '/ticket/status?nr=' + encodeURIComponent(t.nr);
+    if (t.status === 'Erledigt' || t.status === 'Storniert') return res.redirect(back);
+
+    const neu = {
+        titel: clip(b.titel, 150),
+        beschreibung: clip(b.beschreibung, 3000),
+        bis: /^\d{4}-\d{2}-\d{2}$/.test(b.bis || '') ? b.bis : '',
+        ort: clip(b.ort, 150),
+        adresse: clip(b.adresse, 200),
+        email: clip(b.email, 200),
+        dringend: b.dringend === '1' || b.dringend === 'on'
+    };
+    if (!neu.titel || !neu.beschreibung || !neu.ort || !isValidEmail(neu.email)) {
+        return res.redirect(back + '&fehler=1');
+    }
+
+    const ergaenzung = clip(b.ergaenzung, 1000);
+    const now = new Date().toISOString();
+    if (ergaenzung) neu.beschreibung = (neu.beschreibung + `\n\nErgänzung (${formatTs(now)}): ${ergaenzung}`).slice(0, 4000);
+
+    const labels = { titel: 'Titel', beschreibung: 'Beschreibung', bis: 'Frist', ort: 'Ort', adresse: 'Adresse', email: 'E-Mail', dringend: 'Dringend' };
+    const changed = Object.keys(labels).filter(k => k === 'dringend' ? !!t.dringend !== neu.dringend : (t[k] || '') !== neu[k]);
+    if (!changed.length) return res.redirect(back);
+
+    Object.assign(t, neu);
+    t.fieldsDirty = (t.fieldsDirty || 0) + 1;
+    t.history.push({
+        ts: now,
+        status: t.status,
+        kind: 'edit',
+        note: 'Angaben geändert: ' + changed.map(k => labels[k]).join(', ') + (ergaenzung ? ' (inkl. Ergänzung)' : '')
+    });
+    ticketsVersion++;
+    saveTickets();
+    pushTicket(t);
+
+    notifyHausmeisterSlack(
+        `:pencil2: *Auftrag geändert* \`${t.nr}\`\n` +
+        `*${slackEscape(t.titel)}* von ${slackEscape(t.auftraggeber)}\n` +
+        `Geändert: ${changed.map(k => labels[k]).join(', ')}\n` +
+        (ergaenzung ? `${quoteForSlack(ergaenzung)}\n` : '') +
+        `<${baseUrl(req)}/hausmeister|Zur Übersicht>`);
+    res.redirect(back + '&gespeichert=1');
 });
 
 // Status, den das Ticket vor der Rückfrage hatte (nach der Antwort geht es dorthin zurück)
