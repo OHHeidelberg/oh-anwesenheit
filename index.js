@@ -147,7 +147,8 @@ const htmlHead = `
         function closeEmbed() {
             if (window.embedOpen) {
                 window.embedOpen = false;
-                window.location.reload();
+                if (window.location.search) window.location.href = window.location.pathname;
+                else window.location.reload();
             }
         }
     </script>
@@ -674,6 +675,13 @@ async function getFullStatus(id, name) {
     } catch (e) { return { t: "Abwesend", e: "⚪", c: "bg-away", r: 8 }; }
 }
 
+// Status, die nach Ablauf der Zeit zum vorigen Status zurückkehren
+const TEMPORARY_STATUS = ['pause', 'stoeren', 'besprechung', 'unterwegs'];
+function isTemporaryText(text) {
+    const low = (text || '').toLowerCase();
+    return low.includes('pause') || low.includes('stören') || low.includes('unterwegs');
+}
+
 async function getSlackStatus(userId, headers) {
     const r = await axios.get(
         `https://slack.com/api/users.profile.get?user=${userId}`,
@@ -747,7 +755,7 @@ setInterval(async () => {
                 let nextEntry = null;
 
                 // War vorher ein Status gesetzt (ohne Endzeit oder mit noch gültiger Endzeit)? Dann wiederherstellen.
-                if (entry.isPause && prev && prev.text &&
+                if (entry.restores && prev && prev.text &&
                     (prev.expiration === 0 || prev.expiration > now)) {
                     profile = {
                         status_text: prev.text,
@@ -755,7 +763,7 @@ setInterval(async () => {
                         status_expiration: prev.expiration
                     };
                     if (prev.expiration > 0) {
-                        nextEntry = { expires: prev.expiration, isPause: false, previous: null };
+                        nextEntry = { expires: prev.expiration, restores: false, previous: null };
                     }
                 }
 
@@ -839,20 +847,10 @@ app.post('/update-info', (req, res) => {
     res.redirect('back');
 });
 
-app.get('/dashboard', (req, res) => {
-    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
-    const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
-        return `
-        <div class="card">
-            ${renderAvatar(p)}
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-            ${renderTooltip(p)}
-        </div>`;
-    }).join('');
-    res.send(`<html>${htmlHead}<body>${styles}
-        <div class="container">
-            <div class="nav-bar">
+// Gemeinsame Seite für /dashboard, /admin99 und /hausmeister/dashboard (mode: 'standard', 'admin' oder 'hausmeister').
+// Die Hausmeister-Variante hat nur vier Buttons (Dashboard, Krank, Urlaub, Hausmeister) und verlinkt nirgends in die anderen Ansichten.
+function renderDashboardPage(mode) {
+    const standardButtons = `
                 <button class="nav-btn" onclick="closeEmbed()">🏠 Dashboard</button>
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" class="nav-btn" onclick="return openEmbed(this)">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" data-src="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform?embedded=true" class="nav-btn" onclick="return openEmbed(this)">🌴 Urlaub</a>
@@ -860,67 +858,36 @@ app.get('/dashboard', (req, res) => {
                 <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
                 <a href="/ticket" class="nav-btn" onclick="return openEmbed(this)">🔧 Hausmeister</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️ Serverproblem</a>
-                <button class="theme-btn" onclick="toggleTheme()">🌓</button>
-            </div>
-            <div class="grid dash-part">${cards}</div>
-            <iframe id="embedFrame" class="embed-frame" title="Eingebettete Seite"></iframe>
-            <form action="/update" class="footer-bar dash-part">
-                <select name="user" id="userSelect" required><option value="" disabled selected>Mitarbeiter</option>${userOptions}</select>
-                <select name="status">
-                    <option value="da">🏢 Büro</option>
-                    <option value="homeoffice">🏡 Homeoffice</option>
-                    <option value="stoeren">🚫 Nicht stören</option>
-                    <option value="unterwegs">🚗 Unterwegs</option>
-                    <option value="uni">🎓 Uni</option>
-                    <option value="pause">🥪 Pause</option>
-                    <option value="urlaub">🌴 Urlaub</option>
-                    <option value="weg">🌊 Abwesend</option>
-                </select>
-                <input type="time" name="bis"><button type="submit" class="btn-update">Update</button>
-            </form>
-            <form action="/update-info" method="POST" class="dash-part" style="margin-top: 10px; display: flex; gap: 8px;">
-                <input type="text" name="infoText" value="${escapeHtml(cachedInfoText)}" placeholder="Info-Text für Empfang..." style="flex: 1;">
-                <button type="submit" class="btn-update">Info setzen</button>
-            </form>
-        </div>
-        <script>
-            const sel = document.getElementById('userSelect');
-            const saved = localStorage.getItem('selectedMitarbeiter');
-            if (saved) sel.value = saved;
-            sel.addEventListener('change', () => localStorage.setItem('selectedMitarbeiter', sel.value));
-        </script></body></html>`);
-});
-
-// Admin99 Ansicht mit den zusätzlichen Buttons
-app.get('/admin99', (req, res) => {
-    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
-    const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
-        return `
-        <div class="card">
-            ${renderAvatar(p)}
-            <span class="name-label">${p.n}</span>
-            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
-            ${renderTooltip(p)}
-        </div>`;
-    }).join('');
-    res.send(`<html>${htmlHead}<body>${styles}
-        <div class="container">
-            <div class="nav-bar">
-                <button class="nav-btn" onclick="closeEmbed()">🏠 Dashboard</button>
-                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" class="nav-btn" onclick="return openEmbed(this)">🤒 Krank</a>
-                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" data-src="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform?embedded=true" class="nav-btn" onclick="return openEmbed(this)">🌴 Urlaub</a>
-                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
-                <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
-                <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
-                <a href="/ticket" class="nav-btn" onclick="return openEmbed(this)">🔧 Hausmeister</a>
-                <a href="https://forms.gle/KHjYAyxnNYCw7hYo7" class="nav-btn" onclick="return openEmbed(this)" style="border-color: #ff453a;">⚠️️ Serverproblem</a>
+`;
+    const adminGroup = `
                 <div class="nav-group">
                     <span class="nav-group-label">Admin</span>
                     <a href="https://docs.google.com/spreadsheets/d/1xzP5RzX2FCHs1fVaEDKPd4P-Szvo7rHRPzCmKul5rzM/edit?usp=sharing" target="_blank" class="nav-btn">🎉 Jubeltage</a>
                     <a href="https://docs.google.com/spreadsheets/d/1YqfNMvrWAUH6otX3e7w8FbdyscSTZAZ-G6FTdKh9D_0/edit?usp=sharing" target="_blank" class="nav-btn">⏰ Präsenzzeiten</a>
                     <a href="/hausmeister" class="nav-btn" onclick="return openEmbed(this)">📋 HM Liste</a>
                 </div>
+`;
+    const hausmeisterButtons = `
+                <button class="nav-btn" onclick="closeEmbed()">🏠 Dashboard</button>
+                <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" data-open="krank" class="nav-btn" onclick="return openEmbed(this)">🤒 Krank</a>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" data-src="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform?embedded=true" data-open="urlaub" class="nav-btn" onclick="return openEmbed(this)">🌴 Urlaub</a>
+                <a href="/hausmeister" class="nav-btn">🔧 Hausmeister</a>
+`;
+    const navButtons = mode === 'hausmeister' ? hausmeisterButtons : standardButtons + (mode === 'admin' ? adminGroup : '');
+    const userOptions = [...cachedData].sort((a,b) => a.n.localeCompare(b.n)).map(u => `<option value="${u.n}">${u.n}</option>`).join('');
+    const cards = [...cachedData].sort((a,b) => a.r - b.r || a.n.localeCompare(b.n)).map(p => {
+        return `
+        <div class="card">
+            ${renderAvatar(p)}
+            <span class="name-label">${p.n}</span>
+            <div class="status-badge ${p.c}">${p.e} ${p.t}</div>
+            ${renderTooltip(p)}
+        </div>`;
+    }).join('');
+    return `<html>${htmlHead}<body>${styles}
+        <div class="container">
+            <div class="nav-bar">
+${navButtons}
                 <button class="theme-btn" onclick="toggleTheme()">🌓</button>
             </div>
             <div class="grid dash-part">${cards}</div>
@@ -949,8 +916,18 @@ app.get('/admin99', (req, res) => {
             const saved = localStorage.getItem('selectedMitarbeiter');
             if (saved) sel.value = saved;
             sel.addEventListener('change', () => localStorage.setItem('selectedMitarbeiter', sel.value));
-        </script></body></html>`);
-});
+            var openMatch = location.search.match(/[?&]open=(krank|urlaub)/);
+            if (openMatch) { var openEl = document.querySelector('[data-open="' + openMatch[1] + '"]'); if (openEl) openEl.click(); }
+        </script></body></html>`;
+}
+
+app.get('/dashboard', (req, res) => res.send(renderDashboardPage('standard')));
+
+// Admin99 Ansicht mit den zusätzlichen Buttons
+app.get('/admin99', (req, res) => res.send(renderDashboardPage('admin')));
+
+// Reduzierte Ansicht für den Hausmeister: nur Dashboard, Krank, Urlaub und Hausmeister
+app.get('/hausmeister/dashboard', (req, res) => res.send(renderDashboardPage('hausmeister')));
 
 app.get('/empfang', (req, res) => {
 
@@ -1109,15 +1086,18 @@ if (bis) {
 const uid = person.id.trim();
 let previous = null;
 
-if (status === 'pause') {
+// Kurzzeitige Status (Pause, Nicht stören, Unterwegs): läuft die Zeit ab, kehrt der vorige Status zurück
+const isTemporary = TEMPORARY_STATUS.includes(status);
+
+if (isTemporary) {
     const existing = pauseStorage[uid];
-    if (existing && existing.isPause && existing.previous) {
-        // Pause wird nur verlängert/geändert -> ursprünglichen Status behalten
+    if (existing && existing.restores && existing.previous) {
+        // von einem kurzzeitigen Status zum nächsten gewechselt oder verlängert -> ursprünglichen Status behalten
         previous = existing.previous;
     } else {
         try {
             const cur = await getSlackStatus(uid, h);
-            if (cur.text && !cur.text.toLowerCase().includes('pause')) {
+            if (cur.text && !isTemporaryText(cur.text)) {
                 previous = cur;
             }
         } catch (e) {}
@@ -1143,7 +1123,7 @@ try {
     if (expiration > 0) {
         pauseStorage[uid] = {
             expires: expiration,
-            isPause: status === 'pause',
+            restores: isTemporary,
             previous
         };
     } else {
@@ -1675,12 +1655,13 @@ const ticketNav = `
 </div>`;
 
 // Navigationsleiste der Hausmeister-Ansicht (/hausmeister): Dashboard, Krank, Urlaub und die Standardansicht "Hausmeister".
-// Eingebettet im Dashboard (z. B. über "HM Liste") wird sie ausgeblendet, dort gibt es oben schon die Dashboard-Leiste.
+// Alle Buttons führen in die reduzierte Hausmeister-Welt (/hausmeister/dashboard bzw. zurück zu /hausmeister), nie ins volle Dashboard.
+// Eingebettet im Dashboard (z. B. über "HM Liste") wird die Leiste ausgeblendet, dort gibt es oben schon die Dashboard-Leiste.
 const hausmeisterNav = `
 <div class="topnav hm-nav">
-    <a href="/dashboard" target="_top">🏠 Dashboard</a>
-    <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" target="_blank" rel="noopener">🤒 Krank</a>
-    <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" target="_blank" rel="noopener">🌴 Urlaub</a>
+    <a href="/hausmeister/dashboard">🏠 Dashboard</a>
+    <a href="/hausmeister/dashboard?open=krank">🤒 Krank</a>
+    <a href="/hausmeister/dashboard?open=urlaub">🌴 Urlaub</a>
     <a href="/hausmeister" class="nav-active">🔧 Hausmeister</a>
 </div>`;
 
