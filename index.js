@@ -2473,7 +2473,9 @@ const KAL_TYPEN = {
     krank: KALENDER_KRANK_ANZEIGE === 'abwesend'
         ? { icon: '⚪', cls: 'ev-abwesend', label: 'abwesend' }
         : { icon: '🤒', cls: 'ev-krank', label: 'krank' },
-    ho: { icon: '🏡', cls: 'ev-ho', label: 'Homeoffice' }
+    ho: { icon: '🏡', cls: 'ev-ho', label: 'Homeoffice' },
+    regel: { icon: '', cls: 'ev-regel', label: 'frei / Uni (laut Präsenzzeiten)', isRegel: true },
+    regel_ho: { icon: '🏡', cls: 'ev-regel-ho', label: 'Homeoffice (laut Präsenzzeiten)', isRegel: true }
 };
 
 function isoAddDays(iso, n) {
@@ -2485,9 +2487,9 @@ function isoWeekdayIdx(iso) { return (new Date(iso + 'T00:00:00Z').getUTCDay() +
 function formatIsoDe(iso) { const p = iso.split('-'); return `${p[2]}.${p[1]}.${p[0]}`; }
 
 // Alle Einträge für den sichtbaren Zeitraum: { "YYYY-MM-DD": [ { name, type } ] }
-function buildCalendarEvents(gridStart, gridEnd) {
+function buildCalendarEvents(gridStart, gridEnd, showRegel) {
     const byDay = {};
-    const add = (iso, name, type) => { (byDay[iso] = byDay[iso] || []).push({ name, type }); };
+    const add = (iso, name, type, label) => { (byDay[iso] = byDay[iso] || []).push({ name, type, label }); };
     const addRange = (name, start, end, type) => {
         const from = start < gridStart ? gridStart : start;
         const to = end > gridEnd ? gridEnd : end;
@@ -2512,21 +2514,42 @@ function buildCalendarEvents(gridStart, gridEnd) {
         }
     });
 
+    // Regelmäßig "frei", "Uni" oder "Homeoffice" laut Kernpräsenzzeiten (Mo-Fr), nur wenn die Person an dem Tag nicht ohnehin Urlaub/Krank/Homeoffice hat
+    if (showRegel) {
+        const keys = ['mo', 'di', 'mi', 'do', 'fr'];
+        const busy = {};
+        Object.keys(byDay).forEach(d => { busy[d] = new Set(byDay[d].map(e => e.name.toLowerCase())); });
+        for (const p of cachedData) {
+            if (!p || !p.n || !p.presence) continue;
+            for (let d = gridStart; d <= gridEnd; d = isoAddDays(d, 1)) {
+                const idx = isoWeekdayIdx(d);
+                if (idx > 4) continue;
+                const v = String(p.presence[keys[idx]] || '').trim().toLowerCase();
+                if (v !== 'frei' && v !== 'uni' && v !== 'homeoffice') continue;
+                if (busy[d] && busy[d].has(p.n.toLowerCase())) continue;
+                if (v === 'homeoffice') add(d, p.n, 'regel_ho', 'Homeoffice');
+                else add(d, p.n, 'regel', v === 'frei' ? 'frei' : 'Uni');
+            }
+        }
+    }
+
     Object.keys(byDay).forEach(d => {
         const seen = new Set();
         byDay[d] = byDay[d]
-            .filter(e => { const k = e.type + '|' + e.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
-            .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+            .filter(e => { const k = e.type + '|' + e.name.toLowerCase() + '|' + (e.label || ''); if (seen.has(k)) return false; seen.add(k); return true; })
+            .sort((a, b) => ((KAL_TYPEN[a.type].isRegel ? 1 : 0) - (KAL_TYPEN[b.type].isRegel ? 1 : 0)) || a.name.localeCompare(b.name, 'de'));
     });
     return byDay;
 }
 
 function calChip(e) {
     const t = KAL_TYPEN[e.type];
-    return `<span class="ev ${t.cls}" title="${escapeHtml(e.name)} – ${t.label}">${t.icon} ${escapeHtml(e.name)}</span>`;
+    const text = e.type === 'regel' ? `${escapeHtml(e.name)} · ${escapeHtml(e.label)}` : `${t.icon} ${escapeHtml(e.name)}`;
+    const title = `${escapeHtml(e.name)} – ${escapeHtml(e.label || t.label)}${t.isRegel ? ' (laut Präsenzzeiten)' : ''}`;
+    return `<span class="ev ${t.cls}" title="${title}">${text}</span>`;
 }
 
-function renderCalendar(ym, nameFilter) {
+function renderCalendar(ym, nameFilter, showRegel) {
     const today = berlinDate();
     const year = parseInt(ym.slice(0, 4), 10);
     const month = parseInt(ym.slice(5), 10);
@@ -2538,14 +2561,14 @@ function renderCalendar(ym, nameFilter) {
     const gridStart = isoAddDays(first, -isoWeekdayIdx(first));
     const gridEnd = isoAddDays(last, 6 - isoWeekdayIdx(last));
 
-    let byDay = buildCalendarEvents(gridStart, gridEnd);
+    let byDay = buildCalendarEvents(gridStart, gridEnd, showRegel);
     const allNames = [...new Set(Object.values(byDay).flat().map(e => e.name))].sort((a, b) => a.localeCompare(b, 'de'));
     if (nameFilter) {
         const f = nameFilter.toLowerCase();
         Object.keys(byDay).forEach(d => { byDay[d] = byDay[d].filter(e => e.name.toLowerCase() === f); });
     }
 
-    const nameQ = nameFilter ? '&name=' + encodeURIComponent(nameFilter) : '';
+    const nameQ = (nameFilter ? '&name=' + encodeURIComponent(nameFilter) : '') + (showRegel ? '' : '&regel=0');
     let grid = WOCHENTAGE.map(w => `<div class="cal-head">${w}</div>`).join('');
     for (let d = gridStart; d <= gridEnd; d = isoAddDays(d, 1)) {
         const idx = isoWeekdayIdx(d);
@@ -2563,7 +2586,7 @@ function renderCalendar(ym, nameFilter) {
     if (!agenda) agenda = '<div class="box">Keine Einträge in diesem Monat.</div>';
 
     const options = allNames.map(n => `<option value="${escapeHtml(n)}"${nameFilter && n.toLowerCase() === nameFilter.toLowerCase() ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
-    const legend = Object.values(KAL_TYPEN).map(t => `<span class="ev ${t.cls}" style="display:inline-block;">${t.icon} ${t.label}</span>`).join(' ');
+    const legend = Object.values(KAL_TYPEN).filter(t => showRegel || !t.isRegel).map(t => `<span class="ev ${t.cls}" style="display:inline-block;">${t.icon} ${t.label}</span>`).join(' ');
 
     return ticketPage('Abwesenheitskalender', `
         <style>
@@ -2582,6 +2605,8 @@ function renderCalendar(ym, nameFilter) {
           .ev-krank { background: rgba(255,69,58,0.28); color: #ff3b30; }
           .ev-ho { background: rgba(255,214,10,0.25); color: #b38f00; }
           .ev-abwesend { background: rgba(142,142,147,0.25); color: #8e8e93; }
+          .ev-regel { background: rgba(142,142,147,0.15); color: var(--muted); font-weight: 600; }
+          .ev-regel-ho { background: rgba(255,214,10,0.10); color: #b38f00; border: 1px dashed rgba(179,143,0,0.55); font-weight: 600; }
           .agenda { display: none; }
           .agenda-day { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
           .agenda-day.today { border: 2px solid var(--accent); }
@@ -2595,7 +2620,8 @@ function renderCalendar(ym, nameFilter) {
             <span class="cal-title">${MONATE[month - 1]} ${year}</span>
             <a class="tab" href="/kalender?m=${nextYm}${nameQ}">▶</a>
             <a class="tab" href="/kalender${nameQ ? '?' + nameQ.slice(1) : ''}">Heute</a>
-            <select onchange="location.href='/kalender?m=${ym}' + (this.value ? '&name=' + encodeURIComponent(this.value) : '')">
+            <a class="tab" href="/kalender?m=${ym}${nameFilter ? '&name=' + encodeURIComponent(nameFilter) : ''}${showRegel ? '&regel=0' : ''}">${showRegel ? 'Regelmäßige Tage ausblenden' : 'Regelmäßige Tage einblenden'}</a>
+            <select onchange="location.href='/kalender?m=${ym}${showRegel ? '' : '&regel=0'}' + (this.value ? '&name=' + encodeURIComponent(this.value) : '')">
                 <option value="">Alle Personen</option>${options}
             </select>
         </div>
@@ -2610,7 +2636,8 @@ app.get('/kalender', (req, res) => {
     const yr = parseInt(ym.slice(0, 4), 10);
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym) || yr < 2000 || yr > 2100) ym = berlinDate().slice(0, 7);
     const name = String((req.query && req.query.name) || '').slice(0, 100);
-    res.send(renderCalendar(ym, name));
+    const showRegel = String((req.query && req.query.regel) || '') !== '0';
+    res.send(renderCalendar(ym, name, showRegel));
 });
 
 setTimeout(loadStatusLog, 5000);                      // kurz nach dem Start
