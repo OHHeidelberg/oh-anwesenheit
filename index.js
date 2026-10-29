@@ -28,7 +28,9 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 const URLAUB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
 
 // CSV Export URL für Krankmeldungen
-const KRANK_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
+const KRANK_CSV_URL = process.env.KRANK_CSV_URL || 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
+// Solange die Krank-Adresse mit der Urlaub-Adresse übereinstimmt, gibt es keine eigene Krank-Tabelle (dann zeigt der Kalender keine Krank-Einträge aus der Tabelle)
+const KRANK_SEPARATE = KRANK_CSV_URL !== URLAUB_CSV_URL;
 
 const fs = require('fs');
 const INFO_FILE = './info.json';
@@ -37,6 +39,8 @@ let cachedData = [];
 let pauseStorage = {}; 
 let urlaubMap = {}; // Speichert das Urlaubs-Enddatum pro Name
 let krankMap = {};  // Speichert das Krank-Datum (Ende bzw. Start) pro Name
+let urlaubRows = []; // alle genehmigten Urlaube (für den Kalender)
+let krankRows = [];  // alle Krankmeldungen (für den Kalender, nur mit eigener Krank-Tabelle)
 
 let defaultInfoText = "Das ist kein Touchscreen"; // Fallback, wird aus dem Sheet überschrieben
 let cachedInfoText = defaultInfoText;
@@ -479,6 +483,11 @@ function parseGermanDate(dateStr) {
     return null;
 }
 
+// Date -> "YYYY-MM-DD" (aus den lokalen Datumsbestandteilen)
+function toIsoDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // Hilfsfunktion zum Formatieren in DD.MM.YY (akzeptiert DD.MM.YYYY und YYYY-MM-DD)
 function formatDateShort(dateStr) {
     if (!dateStr) return '';
@@ -536,6 +545,7 @@ async function fetchUrlaubData() {
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         
         const map = {};
+        const list = [];
         rows.forEach(r => {
             const name = r[1] ? r[1].trim() : '';
             const startDateStr = r[2];
@@ -549,12 +559,14 @@ async function fetchUrlaubData() {
             const endDate = parseGermanDate(endDateStr);
 
             if (startDate && endDate) {
+                list.push({ name, start: toIsoDate(startDate), end: toIsoDate(endDate) });
                 if (today >= startDate && today <= endDate) {
                     map[name.toLowerCase()] = formatDateShort(endDateStr);
                 }
             }
         });
         urlaubMap = map;
+        urlaubRows = list;
     } catch (e) {
         console.log("Fehler beim Abrufen der Urlaubstabelle:", e.message);
     }
@@ -569,6 +581,7 @@ async function fetchKrankData() {
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         
         const map = {};
+        const list = [];
         rows.forEach(r => {
             const name = r[1] ? r[1].trim() : '';
             const startDateStr = r[2];
@@ -580,14 +593,18 @@ async function fetchKrankData() {
             const endDate = parseGermanDate(endDateStr);
 
             if (startDate && endDate) {
+                list.push({ name, start: toIsoDate(startDate), end: toIsoDate(endDate) });
                 if (today >= startDate && today <= endDate) {
                     map[name.toLowerCase()] = { type: 'bis', date: formatDateShort(endDateStr) };
                 }
             } else if (startDate && today >= startDate) {
+                // ohne Enddatum: gilt bis heute
+                list.push({ name, start: toIsoDate(startDate), end: toIsoDate(today) });
                 map[name.toLowerCase()] = { type: 'seit', date: formatDateShort(startDateStr) };
             }
         });
         krankMap = map;
+        krankRows = KRANK_SEPARATE ? list : [];
     } catch (e) {
         console.log("Fehler beim Abrufen der Krank-Tabelle:", e.message);
     }
@@ -616,7 +633,7 @@ async function getFullStatus(id, name) {
         if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
             res.c="bg-active"; res.r=1; res.e="🏢"; res.buero = true;
         } else if (lowTxt.includes("home")) { 
-            res.c="bg-home"; res.r=3; res.e="🏡"; 
+            res.c="bg-home"; res.r=3; res.e="🏡"; res.ho = true; 
         } else if (lowTxt.includes("stören") || lowTxt.includes("besprechung") || lowTxt.includes("termin")) { 
             if (!lowTxt.includes("stören")) {
                 res.t = "Nicht stören";
@@ -636,6 +653,7 @@ async function getFullStatus(id, name) {
             res.c="bg-away"; 
             res.r=6; 
             res.e="🤒"; 
+            res.krank = true;
 
             const searchName = (name || "").toLowerCase();
             let krankInfo = null;
@@ -719,6 +737,7 @@ async function updateData() {
                 n: name, id: slackId, presence, ...status
             };
         }));
+        try { trackStatusPeriods(); } catch (e) {}
         const info = await axios.get(INFO_URL).catch(() => null);
         if (info) {
             const line = info.data.split('\n')[0].trim();
@@ -832,6 +851,109 @@ updateData();
 
 app.use(express.urlencoded({ extended: true }));
 
+// ---------- Passwortschutz ----------
+// Geschützt sind die Seiten, auf denen Krankmeldungen zu sehen sind bzw. Status gesetzt werden (Dashboard, Admin-Ansicht,
+// Hausmeister-Dashboard, Status-Update). Offen bleiben /empfang (zeigt nur "Im Büro"/"Abwesend") und die Ticket-Seiten.
+// Das Passwort wird bei Render als Umgebungsvariable DASHBOARD_PASSWORD gesetzt (nicht in den Code schreiben).
+// Ist die Variable leer, gibt es keinen Schutz.
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
+const PROTECTED_PATHS = ['/dashboard', '/admin99', '/hausmeister/dashboard', '/update', '/update-info', '/kalender'];
+const AUTH_COOKIE = 'dash_auth';
+const loginAttempts = {};
+
+function authToken() {
+    return require('crypto').createHmac('sha256', DASHBOARD_PASSWORD).update('dashboard-login-v1').digest('hex');
+}
+
+function safeEqual(a, b) {
+    const crypto = require('crypto');
+    const ha = crypto.createHash('sha256').update(String(a)).digest();
+    const hb = crypto.createHash('sha256').update(String(b)).digest();
+    return crypto.timingSafeEqual(ha, hb);
+}
+
+function readCookie(req, name) {
+    const raw = (req.headers && req.headers.cookie) || '';
+    for (const part of raw.split(';')) {
+        const i = part.indexOf('=');
+        if (i > -1 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+    }
+    return '';
+}
+
+function isAuthenticated(req) {
+    if (!DASHBOARD_PASSWORD) return true;
+    return safeEqual(readCookie(req, AUTH_COOKIE), authToken());
+}
+
+// Nach der Anmeldung nur auf eigene Adressen weiterleiten
+function safeNext(n) {
+    const v = String(n || '');
+    return /^\/(?!\/)[\w\-\/.?=&%]*$/.test(v) ? v : '/dashboard';
+}
+
+function clientIp(req) {
+    const fwd = String((req.headers && req.headers['x-forwarded-for']) || '').split(',')[0].trim();
+    return fwd || (req.socket && req.socket.remoteAddress) || 'unbekannt';
+}
+
+function renderLogin(next, error) {
+    return ticketPage('Anmelden', `
+        <h1>🔒 Anmelden</h1>
+        <div class="box">
+            ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+            <form method="POST" action="/login">
+                <input type="hidden" name="next" value="${escapeHtml(safeNext(next))}">
+                <label>Passwort</label>
+                <input type="password" name="password" required autofocus autocomplete="current-password">
+                <button type="submit" class="btn">Anmelden</button>
+            </form>
+            <p class="hint">Die Anmeldung wird auf diesem Gerät für 30 Tage gemerkt.</p>
+        </div>
+    `, false, true);
+}
+
+app.use((req, res, next) => {
+    if (!DASHBOARD_PASSWORD) return next();
+    const path = String(req.path || String(req.url || '').split('?')[0]);
+    if (!PROTECTED_PATHS.includes(path)) return next();
+    if (isAuthenticated(req)) return next();
+    return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl || req.url || path));
+});
+
+app.get('/login', (req, res) => {
+    if (!DASHBOARD_PASSWORD || isAuthenticated(req)) return res.redirect(safeNext(req.query && req.query.next));
+    res.send(renderLogin(req.query && req.query.next, ''));
+});
+
+app.post('/login', (req, res) => {
+    const body = req.body || {};
+    if (!DASHBOARD_PASSWORD) return res.redirect('/dashboard');
+    const ip = clientIp(req);
+    const now = Date.now();
+    const attempts = loginAttempts[ip] = (loginAttempts[ip] || []).filter(t => now - t < 15 * 60 * 1000);
+    if (attempts.length >= 10) {
+        return res.status(429).send(renderLogin(body.next, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.'));
+    }
+    if (!safeEqual(String(body.password || ''), DASHBOARD_PASSWORD)) {
+        attempts.push(now);
+        return res.status(401).send(renderLogin(body.next, 'Falsches Passwort.'));
+    }
+    delete loginAttempts[ip];
+    const secure = String((req.headers && req.headers['x-forwarded-proto']) || '').split(',')[0].trim() === 'https';
+    res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${authToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure ? '; Secure' : ''}`);
+    res.redirect(safeNext(body.next));
+});
+
+app.get('/logout', (req, res) => {
+    res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    res.redirect('/login');
+});
+
+if (!DASHBOARD_PASSWORD) {
+    console.log("Hinweis: DASHBOARD_PASSWORD ist nicht gesetzt - Dashboard und Admin-Ansicht sind ohne Passwort erreichbar.");
+}
+
 app.post('/update-info', (req, res) => {
     const text = (req.body.infoText || "").trim();
     if (!text || text === defaultInfoText) {
@@ -854,7 +976,7 @@ function renderDashboardPage(mode) {
                 <button class="nav-btn" onclick="closeEmbed()">🏠 Dashboard</button>
                 <a href="https://forms.gle/KnKo9CFDjvnMM1sj7" class="nav-btn" onclick="return openEmbed(this)">🤒 Krank</a>
                 <a href="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform" data-src="https://docs.google.com/forms/d/e/1FAIpQLSe3GoWxjG_9ouha7jRpCml_sr2cCNGeKhSQ_amT1z7d8TXCug/viewform?embedded=true" class="nav-btn" onclick="return openEmbed(this)">🌴 Urlaub</a>
-                <a href="https://calendar.google.com/calendar/embed?src=ff6fe888ce2372b2a071807d3f707927304cbc43034474129ab499807a4080e2%40group.calendar.google.com&ctz=Europe%2FBerlin" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
+                <a href="/kalender" class="nav-btn" onclick="return openEmbed(this)">📅 Abwesenheitskalender</a>
                 <a href="https://mail.hd-werkstaetten.de/owa" class="nav-btn" onclick="return openEmbed(this)">📬 Outlook</a>
                 <a href="https://ohheidelberg.github.io/oh-dokumente/?id=admin99" class="nav-btn" onclick="return openEmbed(this)">📂 Dokumente</a>
                 <a href="/ticket" class="nav-btn" onclick="return openEmbed(this)">🔧 Hausmeister</a>
@@ -2233,6 +2355,267 @@ if (sheetEnabled) {
     console.log("Tickets werden nur lokal gespeichert (TICKET_SHEET_URL / TICKET_SHEET_TOKEN nicht gesetzt).");
 }
 // ===================== ENDE HAUSMEISTER-TICKETSYSTEM =====================
+
+// ===================== ABWESENHEITSKALENDER (/kalender) =====================
+// Zeigt Urlaub (aus der Urlaubstabelle), Krank und Homeoffice. Krank und Homeoffice stammen aus dem Slack-Status:
+// Sobald jemand den Status "Homeoffice" bzw. "krank" bekommt, wird ein Zeitraum geöffnet (Von = heute, Bis leer = gilt noch).
+// Wird der Status entfernt, wird der Zeitraum abgeschlossen. Die Zeiträume stehen im Sheet-Blatt "Statuslog"
+// (Name, Art, Von, Bis; vom Apps Script verwaltet) und lassen sich dort von Hand ergänzen oder korrigieren.
+// Ohne Sheet-Anbindung liegt eine lokale Kopie in statuslog.json.
+// Umgebungsvariablen (optional):
+//   KRANK_CSV_URL             zusätzliche Krank-Tabelle (Spalten wie bei Urlaub: Name = B, Von = C, Bis = D)
+//   KALENDER_KRANK_ANZEIGE    "abwesend" zeigt statt "krank" nur "abwesend" (Standard: krank)
+//   STATUSLOG_FILE            lokale Sicherungsdatei (Standard ./statuslog.json)
+const LOG_FILE = process.env.STATUSLOG_FILE || './statuslog.json';
+const KALENDER_KRANK_ANZEIGE = process.env.KALENDER_KRANK_ANZEIGE === 'abwesend' ? 'abwesend' : 'krank';
+let statusPeriods = [];          // { name, kind: 'homeoffice' | 'krank', von: 'YYYY-MM-DD', bis: '' (= gilt noch) | 'YYYY-MM-DD' }
+const logPending = new Map();    // Schlüssel -> Zeitraum, der noch nicht im Sheet steht
+let logFlushing = false;
+
+try {
+    if (fs.existsSync(LOG_FILE)) statusPeriods = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8')).filter(x => x && x.name && x.kind && x.von);
+} catch (e) { statusPeriods = []; }
+
+function saveStatusLog() {
+    try { fs.writeFileSync(LOG_FILE, JSON.stringify(statusPeriods)); } catch (e) {}
+}
+function periodKey(x) { return x.name + '|' + x.kind + '|' + x.von; }
+
+// Nach jedem Datenabruf: Zeiträume öffnen und schließen
+function trackStatusPeriods() {
+    if (!cachedData.length) return; // keine Daten (z. B. Abruf fehlgeschlagen): nichts schließen
+    const today = berlinDate();
+    const yesterday = isoAddDays(today, -1);
+    let changed = false;
+
+    for (const kind of ['homeoffice', 'krank']) {
+        const active = new Set(cachedData.filter(p => p && p.n && (kind === 'homeoffice' ? p.ho : p.krank)).map(p => p.n));
+        const known = new Set(cachedData.filter(p => p && p.n).map(p => p.n));
+
+        for (const name of active) {
+            // Kein neuer Zeitraum, wenn heute schon von einem (offenen oder abgeschlossenen) Zeitraum abgedeckt ist
+            const covered = statusPeriods.some(x => x.kind === kind && x.name === name && x.von <= today && (x.bis || today) >= today);
+            if (!covered) {
+                const per = { name, kind, von: today, bis: '' };
+                statusPeriods.push(per);
+                logPending.set(periodKey(per), per);
+                changed = true;
+            }
+        }
+        for (const per of statusPeriods) {
+            if (per.kind === kind && !per.bis && known.has(per.name) && !active.has(per.name)) {
+                // Homeoffice: Tag der Rückkehr zählt noch mit; krank: zuletzt krank war der Vortag
+                per.bis = kind === 'krank' && yesterday > per.von ? yesterday : (kind === 'krank' ? per.von : today);
+                logPending.set(periodKey(per), per);
+                changed = true;
+            }
+        }
+    }
+    if (changed) {
+        saveStatusLog();
+        flushStatusLog();
+    }
+}
+
+async function flushStatusLog() {
+    if (!sheetEnabled || logFlushing || !logPending.size) return;
+    logFlushing = true;
+    try {
+        for (const [key, per] of [...logPending]) {
+            const r = await withRetry(() => axios.post(TICKET_SHEET_URL, JSON.stringify({
+                token: TICKET_SHEET_TOKEN, action: 'log_save', entry: { name: per.name, kind: per.kind, von: per.von, bis: per.bis || '' }
+            }), { headers: { 'Content-Type': 'text/plain;charset=utf-8' }, timeout: 45000, maxRedirects: 5, family: 4 }), 2);
+            if (r.data && r.data.ok) {
+                if (logPending.get(key) === per) logPending.delete(key);
+            } else {
+                console.log("Statuslog konnte nicht ins Sheet geschrieben werden:", (r.data && r.data.error) || "ungültige Antwort (Apps Script aktualisiert und neu veröffentlicht?)");
+                break;
+            }
+        }
+    } catch (e) {
+        console.log("Statuslog-Übertragung ins Sheet fehlgeschlagen:", describeError(e));
+    } finally {
+        logFlushing = false;
+    }
+}
+
+// Zeiträume aus dem Sheet lesen (übernimmt auch Handänderungen); noch nicht übertragene bleiben erhalten
+async function loadStatusLog() {
+    if (!sheetEnabled) return;
+    try {
+        const r = await withRetry(() => axios.get(TICKET_SHEET_URL, {
+            params: { token: TICKET_SHEET_TOKEN, action: 'log_list' },
+            timeout: 45000,
+            maxRedirects: 5,
+            family: 4
+        }), 2);
+        if (!r.data || !r.data.ok || !Array.isArray(r.data.entries)) {
+            console.log("Statuslog konnte nicht aus dem Sheet gelesen werden:", (r.data && r.data.error) || "ungültige Antwort (Apps Script aktualisiert und neu veröffentlicht?)");
+            return;
+        }
+        const list = r.data.entries
+            .map(e => ({ name: String(e.name || '').trim(), kind: String(e.kind || '').trim().toLowerCase(), von: String(e.von || '').slice(0, 10), bis: String(e.bis || '').slice(0, 10) }))
+            .filter(e => e.name && e.von && /^\d{4}-\d{2}-\d{2}$/.test(e.von) && (e.kind === 'homeoffice' || e.kind === 'krank') && (!e.bis || /^\d{4}-\d{2}-\d{2}$/.test(e.bis)));
+        const byKey = new Map(list.map(e => [periodKey(e), e]));
+        logPending.forEach((per, key) => byKey.set(key, per)); // lokale, noch nicht übertragene Stände haben Vorrang
+        statusPeriods = [...byKey.values()];
+        saveStatusLog();
+        flushStatusLog();
+    } catch (e) {
+        console.log("Statuslog-Abfrage aus dem Sheet fehlgeschlagen:", describeError(e));
+    }
+}
+
+const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const KAL_TYPEN = {
+    urlaub: { icon: '🌴', cls: 'ev-urlaub', label: 'Urlaub' },
+    krank: KALENDER_KRANK_ANZEIGE === 'abwesend'
+        ? { icon: '⚪', cls: 'ev-abwesend', label: 'abwesend' }
+        : { icon: '🤒', cls: 'ev-krank', label: 'krank' },
+    ho: { icon: '🏡', cls: 'ev-ho', label: 'Homeoffice' }
+};
+
+function isoAddDays(iso, n) {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+function isoWeekdayIdx(iso) { return (new Date(iso + 'T00:00:00Z').getUTCDay() + 6) % 7; } // 0 = Montag
+function formatIsoDe(iso) { const p = iso.split('-'); return `${p[2]}.${p[1]}.${p[0]}`; }
+
+// Alle Einträge für den sichtbaren Zeitraum: { "YYYY-MM-DD": [ { name, type } ] }
+function buildCalendarEvents(gridStart, gridEnd) {
+    const byDay = {};
+    const add = (iso, name, type) => { (byDay[iso] = byDay[iso] || []).push({ name, type }); };
+    const addRange = (name, start, end, type) => {
+        const from = start < gridStart ? gridStart : start;
+        const to = end > gridEnd ? gridEnd : end;
+        for (let d = from, n = 0; d <= to && n < 400; d = isoAddDays(d, 1), n++) add(d, name, type);
+    };
+    const todayIso = berlinDate();
+    urlaubRows.forEach(r => addRange(r.name, r.start, r.end, 'urlaub'));
+    krankRows.forEach(r => addRange(r.name, r.start, r.end, 'krank'));
+    // Krank aus dem Slack-Status (offene Zeiträume gelten bis heute)
+    statusPeriods.filter(x => x.kind === 'krank').forEach(x => addRange(x.name, x.von, x.bis || todayIso, 'krank'));
+
+    // Homeoffice nur, wenn die Person an dem Tag nicht ohnehin Urlaub/Krank hat
+    const away = {};
+    Object.keys(byDay).forEach(d => { away[d] = new Set(byDay[d].map(e => e.name.toLowerCase())); });
+    statusPeriods.filter(x => x.kind === 'homeoffice').forEach(x => {
+        const from = x.von < gridStart ? gridStart : x.von;
+        const toRaw = x.bis || todayIso;
+        const to = toRaw > gridEnd ? gridEnd : toRaw;
+        for (let d = from, n = 0; d <= to && n < 400; d = isoAddDays(d, 1), n++) {
+            if (away[d] && away[d].has(x.name.toLowerCase())) continue;
+            add(d, x.name, 'ho');
+        }
+    });
+
+    Object.keys(byDay).forEach(d => {
+        const seen = new Set();
+        byDay[d] = byDay[d]
+            .filter(e => { const k = e.type + '|' + e.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+            .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    });
+    return byDay;
+}
+
+function calChip(e) {
+    const t = KAL_TYPEN[e.type];
+    return `<span class="ev ${t.cls}" title="${escapeHtml(e.name)} – ${t.label}">${t.icon} ${escapeHtml(e.name)}</span>`;
+}
+
+function renderCalendar(ym, nameFilter) {
+    const today = berlinDate();
+    const year = parseInt(ym.slice(0, 4), 10);
+    const month = parseInt(ym.slice(5), 10);
+    const first = ym + '-01';
+    const nextFirst = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const last = isoAddDays(nextFirst, -1);
+    const prevYm = isoAddDays(first, -1).slice(0, 7);
+    const nextYm = nextFirst.slice(0, 7);
+    const gridStart = isoAddDays(first, -isoWeekdayIdx(first));
+    const gridEnd = isoAddDays(last, 6 - isoWeekdayIdx(last));
+
+    let byDay = buildCalendarEvents(gridStart, gridEnd);
+    const allNames = [...new Set(Object.values(byDay).flat().map(e => e.name))].sort((a, b) => a.localeCompare(b, 'de'));
+    if (nameFilter) {
+        const f = nameFilter.toLowerCase();
+        Object.keys(byDay).forEach(d => { byDay[d] = byDay[d].filter(e => e.name.toLowerCase() === f); });
+    }
+
+    const nameQ = nameFilter ? '&name=' + encodeURIComponent(nameFilter) : '';
+    let grid = WOCHENTAGE.map(w => `<div class="cal-head">${w}</div>`).join('');
+    for (let d = gridStart; d <= gridEnd; d = isoAddDays(d, 1)) {
+        const idx = isoWeekdayIdx(d);
+        const inMonth = d >= first && d <= last;
+        const cls = 'cal-day' + (inMonth ? '' : ' other') + (idx >= 5 ? ' we' : '') + (d === today ? ' today' : '');
+        grid += `<div class="${cls}"><div class="cal-num">${parseInt(d.slice(8), 10)}</div>${(byDay[d] || []).map(calChip).join('')}</div>`;
+    }
+
+    let agenda = '';
+    for (let d = first; d <= last; d = isoAddDays(d, 1)) {
+        const ev = byDay[d] || [];
+        if (!ev.length) continue;
+        agenda += `<div class="agenda-day${d === today ? ' today' : ''}"><h3>${WOCHENTAGE[isoWeekdayIdx(d)]} ${formatIsoDe(d)}</h3>${ev.map(calChip).join('')}</div>`;
+    }
+    if (!agenda) agenda = '<div class="box">Keine Einträge in diesem Monat.</div>';
+
+    const options = allNames.map(n => `<option value="${escapeHtml(n)}"${nameFilter && n.toLowerCase() === nameFilter.toLowerCase() ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+    const legend = Object.values(KAL_TYPEN).map(t => `<span class="ev ${t.cls}" style="display:inline-block;">${t.icon} ${t.label}</span>`).join(' ');
+
+    return ticketPage('Abwesenheitskalender', `
+        <style>
+          .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+          .cal-bar select { width: auto; max-width: 220px; padding: 8px; }
+          .cal-title { font-size: 1.3rem; font-weight: 800; min-width: 10ch; text-align: center; }
+          .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+          .cal-head { text-align: center; font-weight: 800; font-size: 0.8rem; color: var(--muted); padding: 4px 0; }
+          .cal-day { background: var(--card); border: 1px solid var(--border); border-radius: 8px; min-height: 92px; padding: 4px; overflow: hidden; }
+          .cal-day.other { opacity: 0.45; }
+          .cal-day.we { background: rgba(142,142,147,0.12); }
+          .cal-day.today { border: 2px solid var(--accent); }
+          .cal-num { font-size: 0.75rem; font-weight: 800; color: var(--muted); text-align: right; }
+          .ev { display: block; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .ev-urlaub { background: rgba(50,215,75,0.22); color: #25a244; }
+          .ev-krank { background: rgba(255,69,58,0.2); color: #ff453a; }
+          .ev-ho { background: rgba(255,214,10,0.25); color: #b38f00; }
+          .ev-abwesend { background: rgba(142,142,147,0.25); color: #8e8e93; }
+          .agenda { display: none; }
+          .agenda-day { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+          .agenda-day.today { border: 2px solid var(--accent); }
+          .agenda-day h3 { margin: 0 0 4px; font-size: 0.95rem; }
+          .agenda-day .ev { font-size: 0.85rem; }
+          @media (max-width: 768px) { .cal-grid { display: none; } .agenda { display: block; } }
+        </style>
+        <div class="topnav"><a href="/dashboard" target="_top" class="nav-dash">🏠 Dashboard</a></div>
+        <div class="cal-bar">
+            <a class="tab" href="/kalender?m=${prevYm}${nameQ}">◀</a>
+            <span class="cal-title">${MONATE[month - 1]} ${year}</span>
+            <a class="tab" href="/kalender?m=${nextYm}${nameQ}">▶</a>
+            <a class="tab" href="/kalender${nameQ ? '?' + nameQ.slice(1) : ''}">Heute</a>
+            <select onchange="location.href='/kalender?m=${ym}' + (this.value ? '&name=' + encodeURIComponent(this.value) : '')">
+                <option value="">Alle Personen</option>${options}
+            </select>
+        </div>
+        <div class="cal-bar">${legend}</div>
+        <div class="cal-grid">${grid}</div>
+        <div class="agenda">${agenda}</div>
+    `, true, true);
+}
+
+app.get('/kalender', (req, res) => {
+    let ym = String((req.query && req.query.m) || '');
+    const yr = parseInt(ym.slice(0, 4), 10);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym) || yr < 2000 || yr > 2100) ym = berlinDate().slice(0, 7);
+    const name = String((req.query && req.query.name) || '').slice(0, 100);
+    res.send(renderCalendar(ym, name));
+});
+
+setTimeout(loadStatusLog, 5000);                      // kurz nach dem Start
+setInterval(loadStatusLog, 10 * 60 * 1000);           // danach alle 10 Minuten (übernimmt auch Handänderungen im Sheet)
+// ===================== ENDE ABWESENHEITSKALENDER =====================
 
 app.listen(port, () => {
     console.log(`Server läuft auf Port ${port}`);
