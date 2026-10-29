@@ -2578,8 +2578,8 @@ function renderCalendar(ym, nameFilter) {
           .cal-day.today { border: 2px solid var(--accent); }
           .cal-num { font-size: 0.75rem; font-weight: 800; color: var(--muted); text-align: right; }
           .ev { display: block; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .ev-urlaub { background: rgba(50,215,75,0.22); color: #25a244; }
-          .ev-krank { background: rgba(255,69,58,0.2); color: #ff453a; }
+          .ev-urlaub { background: rgba(10,132,255,0.22); color: #0a7aff; }
+          .ev-krank { background: rgba(255,69,58,0.28); color: #ff3b30; }
           .ev-ho { background: rgba(255,214,10,0.25); color: #b38f00; }
           .ev-abwesend { background: rgba(142,142,147,0.25); color: #8e8e93; }
           .agenda { display: none; }
