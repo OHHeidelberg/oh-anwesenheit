@@ -2408,32 +2408,65 @@ function saveStatusLog() {
 }
 function periodKey(x) { return x.name + '|' + x.kind + '|' + x.von; }
 
+// Minuten seit Mitternacht (Berliner Zeit)
+function berlinMinutes() {
+    const t = new Date().toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const m = /^(\d{1,2}):(\d{2})/.exec(t);
+    return m ? (+m[1]) * 60 + (+m[2]) : 0;
+}
+
 // Nach jedem Datenabruf: Zeiträume öffnen und schließen
+// Krank: ein Zeitraum läuft von dem Tag, an dem der Status gesetzt wurde, bis zum Vortag der Rückkehr.
+// Homeoffice: der heutige Tag zählt nur, solange der Status noch besteht oder bis zum täglichen Reset (21:30 Uhr) bestanden hat.
+// Wer den Status tagsüber ändert, steht für heute nicht mehr als Homeoffice im Kalender.
 function trackStatusPeriods() {
     if (!cachedData.length) return; // keine Daten (z. B. Abruf fehlgeschlagen): nichts schließen
     const today = berlinDate();
     const yesterday = isoAddDays(today, -1);
+    const afterReset = berlinMinutes() >= 21 * 60 + 30;
     let changed = false;
 
     for (const kind of ['homeoffice', 'krank']) {
         const active = new Set(cachedData.filter(p => p && p.n && (kind === 'homeoffice' ? p.ho : p.krank)).map(p => p.n));
         const known = new Set(cachedData.filter(p => p && p.n).map(p => p.n));
 
+        // 1. Zeiträume öffnen
         for (const name of active) {
             // Kein neuer Zeitraum, wenn heute schon von einem (offenen oder abgeschlossenen) Zeitraum abgedeckt ist
             const covered = statusPeriods.some(x => x.kind === kind && x.name === name && x.von <= today && (x.bis || today) >= today);
             if (!covered) {
                 const per = { name, kind, von: today, bis: '' };
+                if (kind === 'homeoffice') per.local = true; // wird erst ins Sheet geschrieben, wenn feststeht, dass der Tag zählt
                 statusPeriods.push(per);
+                if (kind === 'krank') logPending.set(periodKey(per), per);
+                changed = true;
+            }
+        }
+
+        // 2. Zeiträume, die über Mitternacht hinaus laufen, jetzt dauerhaft ins Sheet übernehmen
+        for (const per of statusPeriods) {
+            if (per.kind === kind && per.local && !per.bis && per.von < today) {
+                delete per.local;
                 logPending.set(periodKey(per), per);
                 changed = true;
             }
         }
-        for (const per of statusPeriods) {
+
+        // 3. Zeiträume schließen
+        for (const per of [...statusPeriods]) {
             if (per.kind === kind && !per.bis && known.has(per.name) && !active.has(per.name)) {
-                // Homeoffice: Tag der Rückkehr zählt noch mit; krank: zuletzt krank war der Vortag
-                per.bis = kind === 'krank' && yesterday > per.von ? yesterday : (kind === 'krank' ? per.von : today);
-                logPending.set(periodKey(per), per);
+                const bis = kind === 'krank'
+                    ? (yesterday > per.von ? yesterday : per.von)       // krank: zuletzt krank war der Vortag (am selben Tag: der Tag selbst)
+                    : (afterReset ? today : yesterday);                  // Homeoffice: heute nur, wenn der Status bis zum Reset bestand
+                if (bis < per.von) {
+                    // Status wurde noch am selben Tag geändert: der Tag zählt nicht, nichts bleibt zurück
+                    statusPeriods.splice(statusPeriods.indexOf(per), 1);
+                    logPending.delete(periodKey(per));
+                } else {
+                    per.bis = bis;
+                    delete per.local;
+                    logPending.set(periodKey(per), per);
+                }
                 changed = true;
             }
         }
@@ -2485,6 +2518,7 @@ async function loadStatusLog() {
             .filter(e => e.name && e.von && /^\d{4}-\d{2}-\d{2}$/.test(e.von) && (e.kind === 'homeoffice' || e.kind === 'krank') && (!e.bis || /^\d{4}-\d{2}-\d{2}$/.test(e.bis)));
         const byKey = new Map(list.map(e => [periodKey(e), e]));
         logPending.forEach((per, key) => byKey.set(key, per)); // lokale, noch nicht übertragene Stände haben Vorrang
+        statusPeriods.filter(x => x.local && !x.bis).forEach(x => { if (!byKey.has(periodKey(x))) byKey.set(periodKey(x), x); }); // heutiges Homeoffice, noch nicht im Sheet
         statusPeriods = [...byKey.values()];
         saveStatusLog();
         flushStatusLog();
