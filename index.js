@@ -41,7 +41,7 @@ let urlaubMap = {}; // Speichert das Urlaubs-Enddatum pro Name
 let krankMap = {};  // Speichert das Krank-Datum (Ende bzw. Start) pro Name
 let urlaubRows = []; // alle genehmigten Urlaube (für den Kalender)
 let krankRows = [];  // alle Krankmeldungen (für den Kalender, nur mit eigener Krank-Tabelle)
-let lastKrankLogCount = -1;
+let lastKrankSummary = '';
 
 let defaultInfoText = "Das ist kein Touchscreen"; // Fallback, wird aus dem Sheet überschrieben
 let cachedInfoText = defaultInfoText;
@@ -463,24 +463,19 @@ function renderTooltip(person) {
 // Hilfsfunktion zum Umwandeln von DD.MM.YYYY oder YYYY-MM-DD in ein Date-Objekt
 function parseGermanDate(dateStr) {
     if (!dateStr) return null;
-    const str = dateStr.trim();
-
-    if (str.includes('-')) {
-        const parts = str.split('-');
-        if (parts.length === 3) {
-            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-        }
+    const str = String(dateStr).trim().split(/[ T]/)[0]; // Uhrzeit hinter dem Datum ignorieren
+    let m;
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(str))) return new Date(+m[1], +m[2] - 1, +m[3]);              // 2026-10-27
+    if ((m = /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\.?$/.exec(str))) {                                                // 27.10.2026 oder 27.10.26
+        const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+        return new Date(y, +m[2] - 1, +m[1]);
     }
-
-    if (str.includes('.')) {
-        const parts = str.split('.');
-        if (parts.length >= 3) {
-            let year = parts[2];
-            if (year.length === 2) year = '20' + year;
-            return new Date(parseInt(year), parseInt(parts[1]) - 1, parseInt(parts[0]));
-        }
+    if ((m = /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(str))) return new Date(+m[1], +m[2] - 1, +m[3]);           // 2026/10/27
+    if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(str))) {                                                  // 27/10/2026 oder 10/27/2026
+        const a = +m[1], b = +m[2];
+        const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+        return b > 12 ? new Date(y, a - 1, b) : new Date(y, b - 1, a); // nicht eindeutig: Tag/Monat
     }
-
     return null;
 }
 
@@ -569,7 +564,7 @@ async function fetchUrlaubData() {
         urlaubMap = map;
         urlaubRows = list;
     } catch (e) {
-        console.log("Fehler beim Abrufen der Urlaubstabelle:", e.message);
+        console.log("Fehler beim Abrufen der Urlaubstabelle:", describeError(e));
     }
 }
 
@@ -585,15 +580,18 @@ async function fetchKrankData() {
         
         const map = {};
         const list = [];
+        const stats = { total: rows.length, noName: 0, badStart: 0, badEnd: 0, sampleStart: '', sampleEnd: '' };
         rows.forEach(r => {
             const name = r[cols.name] ? r[cols.name].trim() : '';
             const startDateStr = r[cols.start];
             const endDateStr = r[cols.end];
 
-            if (!name) return;
+            if (!name) { stats.noName++; return; }
 
             const startDate = parseGermanDate(startDateStr);
             const endDate = parseGermanDate(endDateStr);
+            if (!startDate) { stats.badStart++; if (!stats.sampleStart) stats.sampleStart = String(startDateStr || '').slice(0, 30); }
+            if (startDate && String(endDateStr || '').trim() && !endDate) { stats.badEnd++; if (!stats.sampleEnd) stats.sampleEnd = String(endDateStr).slice(0, 30); }
 
             if (startDate && endDate) {
                 list.push({ name, start: toIsoDate(startDate), end: toIsoDate(endDate) });
@@ -608,12 +606,19 @@ async function fetchKrankData() {
         });
         krankMap = map;
         krankRows = KRANK_SEPARATE ? list : [];
-        if (KRANK_SEPARATE && list.length !== lastKrankLogCount) {
-            console.log(`Krank-Tabelle: ${list.length} Einträge gelesen (Spalten: Name = ${cols.name + 1}, Von = ${cols.start + 1}, Bis = ${cols.end + 1}).`);
-            lastKrankLogCount = list.length;
+        if (KRANK_SEPARATE) {
+            const problems = [];
+            if (stats.noName) problems.push(`ohne Namen in Spalte B: ${stats.noName}`);
+            if (stats.badStart) problems.push(`Startdatum in Spalte C nicht lesbar: ${stats.badStart}, z. B. "${stats.sampleStart}"`);
+            if (stats.badEnd) problems.push(`Enddatum in Spalte D nicht lesbar: ${stats.badEnd}, z. B. "${stats.sampleEnd}"`);
+            const summary = `Krank-Tabelle: ${list.length} von ${stats.total} Zeilen verwertbar` + (problems.length ? ` (${problems.join('; ')})` : '') + ` [Spalten: Name = B, Von = C, Bis = D]`;
+            if (summary !== lastKrankSummary) {
+                console.log(summary);
+                lastKrankSummary = summary;
+            }
         }
     } catch (e) {
-        console.log("Fehler beim Abrufen der Krank-Tabelle:", e.message);
+        console.log("Fehler beim Abrufen der Krank-Tabelle:", describeError(e));
     }
 }
 
