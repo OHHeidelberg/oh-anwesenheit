@@ -28,7 +28,7 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 const URLAUB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
 
 // CSV Export URL für Krankmeldungen
-const KRANK_CSV_URL = process.env.KRANK_CSV_URL || 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
+const KRANK_CSV_URL = process.env.KRANK_CSV_URL || 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&gid=1469526061';
 // Solange die Krank-Adresse mit der Urlaub-Adresse übereinstimmt, gibt es keine eigene Krank-Tabelle (dann zeigt der Kalender keine Krank-Einträge aus der Tabelle)
 const KRANK_SEPARATE = KRANK_CSV_URL !== URLAUB_CSV_URL;
 
@@ -41,6 +41,7 @@ let urlaubMap = {}; // Speichert das Urlaubs-Enddatum pro Name
 let krankMap = {};  // Speichert das Krank-Datum (Ende bzw. Start) pro Name
 let urlaubRows = []; // alle genehmigten Urlaube (für den Kalender)
 let krankRows = [];  // alle Krankmeldungen (für den Kalender, nur mit eigener Krank-Tabelle)
+let lastKrankLogCount = -1;
 
 let defaultInfoText = "Das ist kein Touchscreen"; // Fallback, wird aus dem Sheet überschrieben
 let cachedInfoText = defaultInfoText;
@@ -483,6 +484,16 @@ function parseGermanDate(dateStr) {
     return null;
 }
 
+// Spalten einer Tabelle anhand der Überschriften erkennen (Name, Von/Beginn/ab, Bis/Ende); sonst Standard B, C, D
+function detectAbsenceColumns(header) {
+    const h = (header || []).map(x => String(x || '').toLowerCase());
+    const find = (re, skip) => h.findIndex((x, i) => !skip.includes(i) && re.test(x));
+    const name = find(/name/, []);
+    const start = find(/(\bvon\b|beginn|start|\bab\b|anfang)/, [name]);
+    const end = find(/(\bbis\b|ende|enddatum|voraussichtlich)/, [name, start]);
+    return { name: name >= 0 ? name : 1, start: start >= 0 ? start : 2, end: end >= 0 ? end : 3 };
+}
+
 // Date -> "YYYY-MM-DD" (aus den lokalen Datumsbestandteilen)
 function toIsoDate(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -575,7 +586,9 @@ async function fetchUrlaubData() {
 async function fetchKrankData() {
     try {
         const res = await axios.get(KRANK_CSV_URL, { timeout: 8000 });
-        const rows = parse(res.data, { from_line: 2, skip_empty_lines: true });
+        const allRows = parse(res.data, { skip_empty_lines: true });
+        const rows = allRows.slice(1);
+        const cols = KRANK_SEPARATE ? detectAbsenceColumns(allRows[0] || []) : { name: 1, start: 2, end: 3 };
         
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -583,9 +596,9 @@ async function fetchKrankData() {
         const map = {};
         const list = [];
         rows.forEach(r => {
-            const name = r[1] ? r[1].trim() : '';
-            const startDateStr = r[2];
-            const endDateStr = r[3];
+            const name = r[cols.name] ? r[cols.name].trim() : '';
+            const startDateStr = r[cols.start];
+            const endDateStr = r[cols.end];
 
             if (!name) return;
 
@@ -605,6 +618,10 @@ async function fetchKrankData() {
         });
         krankMap = map;
         krankRows = KRANK_SEPARATE ? list : [];
+        if (KRANK_SEPARATE && list.length !== lastKrankLogCount) {
+            console.log(`Krank-Tabelle: ${list.length} Einträge gelesen (Spalten: Name = ${cols.name + 1}, Von = ${cols.start + 1}, Bis = ${cols.end + 1}).`);
+            lastKrankLogCount = list.length;
+        }
     } catch (e) {
         console.log("Fehler beim Abrufen der Krank-Tabelle:", e.message);
     }
@@ -630,7 +647,7 @@ async function getFullStatus(id, name) {
         let res = { t: displayTxt || (online ? "Online" : "Abwesend"), e: "📍", c: "bg-away", p: prof.image_192, r: 8 };
         if (online && !txt) { res.r = 2; res.c = "bg-active"; res.e = "🟢"; }
         
-        if (lowTxt.includes("büro") || lowTxt.includes("da")) { 
+        if ((lowTxt.includes("büro") || lowTxt.includes("da")) && !lowTxt.includes("krank") && !lowTxt.includes("urlaub")) { 
             res.c="bg-active"; res.r=1; res.e="🏢"; res.buero = true;
         } else if (lowTxt.includes("home")) { 
             res.c="bg-home"; res.r=3; res.e="🏡"; res.ho = true; 
@@ -2628,6 +2645,7 @@ function renderCalendar(ym, nameFilter, showRegel) {
         <div class="cal-bar">${legend}</div>
         <div class="cal-grid">${grid}</div>
         <div class="agenda">${agenda}</div>
+        ${(!krankRows.length && !statusPeriods.some(x => x.kind === 'krank')) ? '<p class="hint">Hinweis: Krankmeldungen erscheinen hier, sobald jemand den Slack-Status „Krank“ hat oder die Krank-Tabelle (Umgebungsvariable KRANK_CSV_URL) angebunden ist.</p>' : ''}
     `, true, true);
 }
 
