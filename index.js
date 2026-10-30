@@ -484,16 +484,6 @@ function parseGermanDate(dateStr) {
     return null;
 }
 
-// Spalten einer Tabelle anhand der Überschriften erkennen (Name, Von/Beginn/ab, Bis/Ende); sonst Standard B, C, D
-function detectAbsenceColumns(header) {
-    const h = (header || []).map(x => String(x || '').toLowerCase());
-    const find = (re, skip) => h.findIndex((x, i) => !skip.includes(i) && re.test(x));
-    const name = find(/name/, []);
-    const start = find(/(\bvon\b|beginn|start|\bab\b|anfang)/, [name]);
-    const end = find(/(\bbis\b|ende|enddatum|voraussichtlich)/, [name, start]);
-    return { name: name >= 0 ? name : 1, start: start >= 0 ? start : 2, end: end >= 0 ? end : 3 };
-}
-
 // Date -> "YYYY-MM-DD" (aus den lokalen Datumsbestandteilen)
 function toIsoDate(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -588,7 +578,7 @@ async function fetchKrankData() {
         const res = await axios.get(KRANK_CSV_URL, { timeout: 8000 });
         const allRows = parse(res.data, { skip_empty_lines: true });
         const rows = allRows.slice(1);
-        const cols = KRANK_SEPARATE ? detectAbsenceColumns(allRows[0] || []) : { name: 1, start: 2, end: 3 };
+        const cols = { name: 1, start: 2, end: 3 }; // Krank-Tabelle: Name = B, Startdatum = C, Enddatum = D
         
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -2586,16 +2576,21 @@ function renderCalendar(ym, nameFilter, showRegel) {
     }
 
     const nameQ = (nameFilter ? '&name=' + encodeURIComponent(nameFilter) : '') + (showRegel ? '' : '&regel=0');
-    let grid = WOCHENTAGE.map(w => `<div class="cal-head">${w}</div>`).join('');
-    for (let d = gridStart; d <= gridEnd; d = isoAddDays(d, 1)) {
-        const idx = isoWeekdayIdx(d);
-        const inMonth = d >= first && d <= last;
-        const cls = 'cal-day' + (inMonth ? '' : ' other') + (idx >= 5 ? ' we' : '') + (d === today ? ' today' : '');
-        grid += `<div class="${cls}"><div class="cal-num">${parseInt(d.slice(8), 10)}</div>${(byDay[d] || []).map(calChip).join('')}</div>`;
+    // Nur Montag bis Freitag (Wochenenden sind ausgeblendet); Wochen ohne Arbeitstag des Monats entfallen
+    let grid = WOCHENTAGE.slice(0, 5).map(w => `<div class="cal-head">${w}</div>`).join('');
+    for (let w = gridStart; w <= gridEnd; w = isoAddDays(w, 7)) {
+        const weekDays = [0, 1, 2, 3, 4].map(i => isoAddDays(w, i));
+        if (!weekDays.some(d => d >= first && d <= last)) continue;
+        weekDays.forEach(d => {
+            const inMonth = d >= first && d <= last;
+            const cls = 'cal-day' + (inMonth ? '' : ' other') + (d === today ? ' today' : '');
+            grid += `<div class="${cls}"><div class="cal-num">${parseInt(d.slice(8), 10)}</div>${(byDay[d] || []).map(calChip).join('')}</div>`;
+        });
     }
 
     let agenda = '';
     for (let d = first; d <= last; d = isoAddDays(d, 1)) {
+        if (isoWeekdayIdx(d) > 4) continue; // Wochenende ausgeblendet
         const ev = byDay[d] || [];
         if (!ev.length) continue;
         agenda += `<div class="agenda-day${d === today ? ' today' : ''}"><h3>${WOCHENTAGE[isoWeekdayIdx(d)]} ${formatIsoDe(d)}</h3>${ev.map(calChip).join('')}</div>`;
@@ -2610,11 +2605,10 @@ function renderCalendar(ym, nameFilter, showRegel) {
           .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
           .cal-bar select { width: auto; max-width: 220px; padding: 8px; }
           .cal-title { font-size: 1.3rem; font-weight: 800; min-width: 10ch; text-align: center; }
-          .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+          .cal-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
           .cal-head { text-align: center; font-weight: 800; font-size: 0.8rem; color: var(--muted); padding: 4px 0; }
           .cal-day { background: var(--card); border: 1px solid var(--border); border-radius: 8px; min-height: 92px; padding: 4px; overflow: hidden; }
           .cal-day.other { opacity: 0.45; }
-          .cal-day.we { background: rgba(142,142,147,0.12); }
           .cal-day.today { border: 2px solid var(--accent); }
           .cal-num { font-size: 0.75rem; font-weight: 800; color: var(--muted); text-align: right; }
           .ev { display: block; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
