@@ -28,7 +28,7 @@ const INFO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQKp0oJEEuoypA
 const URLAUB_CSV_URL = 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&id=1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU';
 
 // CSV Export URL für Krankmeldungen
-const KRANK_CSV_URL = process.env.KRANK_CSV_URL || 'https://docs.google.com/spreadsheets/d/1NDwRVyNkI2wUX8sTjTiUscrRZ43Fs70WTFt8UK8qOsU/export?format=csv&gid=1469526061';
+const KRANK_CSV_URL = process.env.KRANK_CSV_URL || 'https://docs.google.com/spreadsheets/d/1JCGBGOcNqVOO0PO6wR2Zj5b9GQiuuV9u0SojgWHlhlk/export?format=csv&gid=1469526061';
 // Solange die Krank-Adresse mit der Urlaub-Adresse übereinstimmt, gibt es keine eigene Krank-Tabelle (dann zeigt der Kalender keine Krank-Einträge aus der Tabelle)
 const KRANK_SEPARATE = KRANK_CSV_URL !== URLAUB_CSV_URL;
 
@@ -532,6 +532,16 @@ function reformatDatesInText(text) {
     return formatted;
 }
 
+// Verständlicher Hinweis zu typischen Fehlern beim Abruf einer Google-Tabelle
+function sheetErrorHint(e, envName) {
+    const st = e && e.response && e.response.status;
+    const fix = envName ? ` Liegt das Blatt in einer anderen Tabelle, bei Render die Variable ${envName} mit der vollständigen Adresse setzen.` : '';
+    if (st === 400) return ' - Hinweis: Die Tabelle antwortet mit "ungültige Anfrage". Vermutlich gibt es das Blatt (gid) in dieser Tabelle nicht.' + fix;
+    if (st === 401 || st === 403) return ' - Hinweis: Die Tabelle ist nicht für "Jeden mit dem Link" lesbar bzw. nicht im Web veröffentlicht.' + fix;
+    if (st === 404) return ' - Hinweis: Diese Tabelle wurde nicht gefunden, die Adresse stimmt vermutlich nicht.' + fix;
+    return '';
+}
+
 async function fetchUrlaubData() {
     try {
         const res = await axios.get(URLAUB_CSV_URL, { timeout: 8000 });
@@ -564,13 +574,18 @@ async function fetchUrlaubData() {
         urlaubMap = map;
         urlaubRows = list;
     } catch (e) {
-        console.log("Fehler beim Abrufen der Urlaubstabelle:", describeError(e));
+        console.log("Fehler beim Abrufen der Urlaubstabelle:", describeError(e) + sheetErrorHint(e, ""));
     }
 }
 
 async function fetchKrankData() {
     try {
         const res = await axios.get(KRANK_CSV_URL, { timeout: 8000 });
+        if (/^\s*</.test(String(res.data))) {
+            const msg = 'Krank-Tabelle: Die Antwort ist keine CSV-Datei, sondern eine Webseite (vermutlich Anmeldeseite). Die Tabelle muss für "Jeden mit dem Link" lesbar oder als CSV im Web veröffentlicht sein; die Adresse dann bei Render in KRANK_CSV_URL eintragen.';
+            if (msg !== lastKrankSummary) { console.log(msg); lastKrankSummary = msg; }
+            return;
+        }
         const allRows = parse(res.data, { skip_empty_lines: true });
         const rows = allRows.slice(1);
         const cols = { name: 1, start: 2, end: 3 }; // Krank-Tabelle: Name = B, Startdatum = C, Enddatum = D
@@ -618,7 +633,7 @@ async function fetchKrankData() {
             }
         }
     } catch (e) {
-        console.log("Fehler beim Abrufen der Krank-Tabelle:", describeError(e));
+        console.log("Fehler beim Abrufen der Krank-Tabelle:", describeError(e) + sheetErrorHint(e, "KRANK_CSV_URL"));
     }
 }
 
