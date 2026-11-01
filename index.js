@@ -595,7 +595,7 @@ async function fetchKrankData() {
         
         const map = {};
         const list = [];
-        const stats = { total: rows.length, noName: 0, badStart: 0, badEnd: 0, sampleStart: '', sampleEnd: '' };
+        const stats = { total: rows.length, noName: 0, badStart: 0, badEnd: 0, open: 0, sampleStart: '', sampleEnd: '' };
         rows.forEach(r => {
             const name = r[cols.name] ? r[cols.name].trim() : '';
             const startDateStr = r[cols.start];
@@ -615,7 +615,8 @@ async function fetchKrankData() {
                 }
             } else if (startDate && today >= startDate) {
                 // ohne Enddatum: gilt bis heute
-                list.push({ name, start: toIsoDate(startDate), end: toIsoDate(today) });
+                list.push({ name, start: toIsoDate(startDate), end: toIsoDate(today), open: true });
+                stats.open++;
                 map[name.toLowerCase()] = { type: 'seit', date: formatDateShort(startDateStr) };
             }
         });
@@ -625,6 +626,7 @@ async function fetchKrankData() {
             const problems = [];
             if (stats.noName) problems.push(`ohne Namen in Spalte B: ${stats.noName}`);
             if (stats.badStart) problems.push(`Startdatum in Spalte C nicht lesbar: ${stats.badStart}, z. B. "${stats.sampleStart}"`);
+            if (stats.open) problems.push(`ohne Enddatum, gelten daher bis heute: ${stats.open}`);
             if (stats.badEnd) problems.push(`Enddatum in Spalte D nicht lesbar: ${stats.badEnd}, z. B. "${stats.sampleEnd}"`);
             const summary = `Krank-Tabelle: ${list.length} von ${stats.total} Zeilen verwertbar` + (problems.length ? ` (${problems.join('; ')})` : '') + ` [Spalten: Name = B, Von = C, Bis = D]`;
             if (summary !== lastKrankSummary) {
@@ -2551,16 +2553,16 @@ function formatIsoDe(iso) { const p = iso.split('-'); return `${p[2]}.${p[1]}.${
 function buildCalendarEvents(gridStart, gridEnd, showRegel) {
     const byDay = {};
     const add = (iso, name, type, label) => { (byDay[iso] = byDay[iso] || []).push({ name, type, label }); };
-    const addRange = (name, start, end, type) => {
+    const addRange = (name, start, end, type, label) => {
         const from = start < gridStart ? gridStart : start;
         const to = end > gridEnd ? gridEnd : end;
-        for (let d = from, n = 0; d <= to && n < 400; d = isoAddDays(d, 1), n++) add(d, name, type);
+        for (let d = from, n = 0; d <= to && n < 400; d = isoAddDays(d, 1), n++) add(d, name, type, label);
     };
     const todayIso = berlinDate();
     urlaubRows.forEach(r => addRange(r.name, r.start, r.end, 'urlaub'));
-    krankRows.forEach(r => addRange(r.name, r.start, r.end, 'krank'));
+    krankRows.forEach(r => addRange(r.name, r.start, r.end, 'krank', r.open ? 'krank (Tabelle: kein Enddatum eingetragen, gilt bis heute)' : 'krank (Tabelle)'));
     // Krank aus dem Slack-Status (offene Zeiträume gelten bis heute)
-    statusPeriods.filter(x => x.kind === 'krank').forEach(x => addRange(x.name, x.von, x.bis || todayIso, 'krank'));
+    statusPeriods.filter(x => x.kind === 'krank').forEach(x => addRange(x.name, x.von, x.bis || todayIso, 'krank', x.bis ? 'krank (Slack-Status)' : `krank (Slack-Status seit ${formatIsoDe(x.von)}, noch nicht beendet)`));
 
     // Homeoffice nur, wenn die Person an dem Tag nicht ohnehin Urlaub/Krank hat
     const away = {};
@@ -2597,7 +2599,7 @@ function buildCalendarEvents(gridStart, gridEnd, showRegel) {
     Object.keys(byDay).forEach(d => {
         const seen = new Set();
         byDay[d] = byDay[d]
-            .filter(e => { const k = e.type + '|' + e.name.toLowerCase() + '|' + (e.label || ''); if (seen.has(k)) return false; seen.add(k); return true; })
+            .filter(e => { const k = e.type + '|' + e.name.toLowerCase() + (KAL_TYPEN[e.type].isRegel ? '|' + (e.label || '') : ''); if (seen.has(k)) return false; seen.add(k); return true; })
             .sort((a, b) => ((KAL_TYPEN[a.type].isRegel ? 1 : 0) - (KAL_TYPEN[b.type].isRegel ? 1 : 0)) || a.name.localeCompare(b.name, 'de'));
     });
     return byDay;
