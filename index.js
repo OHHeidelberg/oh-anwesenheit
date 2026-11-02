@@ -2612,7 +2612,114 @@ function calChip(e) {
     return `<span class="ev ${t.cls}" title="${title}">${text}</span>`;
 }
 
-function renderCalendar(ym, nameFilter, showRegel) {
+// ---------- iCal-Feed (/kalender.ics) zum Abonnieren in Outlook ----------
+// Ist KALENDER_ICS_KEY gesetzt, liefert /kalender.ics?key=... eine Kalenderdatei mit Urlaub, Krank und Homeoffice
+// (ganztägige Termine). Der Schlüssel in der Adresse ersetzt die Anmeldung, behandle die Adresse wie ein Passwort.
+// Optional: &typen=urlaub,krank,homeoffice (Auswahl) und &name=Teil des Namens.
+const ICS_KEY = process.env.KALENDER_ICS_KEY || '';
+const ICS_TYPEN = {
+    urlaub: { icon: '🌴', label: 'Urlaub', cat: 'Urlaub' },
+    krank: KALENDER_KRANK_ANZEIGE === 'abwesend' ? { icon: '⚪', label: 'abwesend', cat: 'Abwesend' } : { icon: '🤒', label: 'krank', cat: 'Krank' },
+    ho: { icon: '🏡', label: 'Homeoffice', cat: 'Homeoffice' }
+};
+
+function icsEscape(t) {
+    return String(t).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+// Zeilen auf höchstens 75 Byte kürzen (UTF-8, nicht mitten im Zeichen), Fortsetzungszeilen beginnen mit einem Leerzeichen
+function icsFold(line) {
+    const bytes = Buffer.from(line, 'utf8');
+    if (bytes.length <= 75) return line;
+    const out = [];
+    let start = 0;
+    let limit = 75;
+    while (start < bytes.length) {
+        let end = Math.min(start + limit, bytes.length);
+        while (end < bytes.length && (bytes[end] & 0xC0) === 0x80) end--;
+        out.push(bytes.slice(start, end).toString('utf8'));
+        start = end;
+        limit = 74;
+    }
+    return out.join('\r\n ');
+}
+
+function buildIcs(types, nameFilter) {
+    const today = berlinDate();
+    const from = isoAddDays(today, -365);
+    const f = String(nameFilter || '').toLowerCase();
+    const raw = [];
+    if (types.has('urlaub')) urlaubRows.forEach(r => raw.push({ type: 'urlaub', name: r.name, start: r.start, end: r.end }));
+    if (types.has('krank')) {
+        krankRows.forEach(r => raw.push({ type: 'krank', name: r.name, start: r.start, end: r.end }));
+        statusPeriods.filter(x => x.kind === 'krank').forEach(x => raw.push({ type: 'krank', name: x.name, start: x.von, end: x.bis || today }));
+    }
+    if (types.has('ho')) statusPeriods.filter(x => x.kind === 'homeoffice').forEach(x => raw.push({ type: 'ho', name: x.name, start: x.von, end: x.bis || today }));
+
+    // Auswahl, gültige Zeiträume der letzten 12 Monate und Zukunft; überlappende/aneinander grenzende Zeiträume zusammenfassen
+    const groups = {};
+    raw.filter(e => e.name && e.start && e.end && e.end >= e.start && e.end >= from && (!f || e.name.toLowerCase().includes(f)))
+        .forEach(e => { (groups[e.type + '|' + e.name.toLowerCase()] = groups[e.type + '|' + e.name.toLowerCase()] || []).push(e); });
+    const events = [];
+    Object.values(groups).forEach(list => {
+        list.sort((a, b) => a.start.localeCompare(b.start));
+        let cur = null;
+        list.forEach(e => {
+            if (cur && e.start <= isoAddDays(cur.end, 1)) { if (e.end > cur.end) cur.end = e.end; }
+            else { if (cur) events.push(cur); cur = { type: e.type, name: e.name, start: e.start, end: e.end }; }
+        });
+        if (cur) events.push(cur);
+    });
+    events.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, 'de'));
+
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    const crypto = require('crypto');
+    const lines = [
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//OH Dashboard//Abwesenheitskalender//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+        'X-WR-CALNAME:Abwesenheiten', 'X-WR-TIMEZONE:Europe/Berlin', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'
+    ];
+    events.forEach(e => {
+        const t = ICS_TYPEN[e.type];
+        const uid = crypto.createHash('sha1').update(e.type + '|' + e.name.toLowerCase() + '|' + e.start).digest('hex') + '@oh-dashboard';
+        lines.push('BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + stamp,
+            'DTSTART;VALUE=DATE:' + e.start.replace(/-/g, ''),
+            'DTEND;VALUE=DATE:' + isoAddDays(e.end, 1).replace(/-/g, ''),     // Ende ist exklusiv
+            'SUMMARY:' + icsEscape(`${t.icon} ${e.name} – ${t.label}`),
+            'CATEGORIES:' + icsEscape(t.cat), 'TRANSP:TRANSPARENT', 'END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+    return lines.map(icsFold).join('\r\n') + '\r\n';
+}
+
+app.get('/kalender.ics', (req, res) => {
+    if (!ICS_KEY || !safeEqual(String((req.query && req.query.key) || ''), ICS_KEY)) return res.status(404).send('Nicht gefunden');
+    const wanted = String((req.query && req.query.typen) || 'urlaub,krank,homeoffice').toLowerCase().split(',').map(x => x.trim());
+    const types = new Set();
+    if (wanted.includes('urlaub')) types.add('urlaub');
+    if (wanted.includes('krank')) types.add('krank');
+    if (wanted.includes('homeoffice') || wanted.includes('ho')) types.add('ho');
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="abwesenheiten.ics"');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(buildIcs(types, String((req.query && req.query.name) || '').slice(0, 100)));
+});
+
+if (!ICS_KEY) console.log("Hinweis: KALENDER_ICS_KEY ist nicht gesetzt - der Kalender-Feed für Outlook (/kalender.ics) ist deaktiviert.");
+
+// Diagnose: alle Quellen, aus denen der Kalender Einträge zu einer Person bezieht (/kalender?debug=Name)
+function renderCalDebug(q) {
+    const low = String(q || '').toLowerCase();
+    const m = n => String(n || '').toLowerCase().includes(low);
+    const items = [];
+    krankRows.filter(r => m(r.name)).forEach(r => items.push(`Krank-Tabelle: ${r.name}: ${formatIsoDe(r.start)} bis ${formatIsoDe(r.end)}${r.open ? ' (kein Enddatum eingetragen, gilt bis heute)' : ''}`));
+    urlaubRows.filter(r => m(r.name)).forEach(r => items.push(`Urlaub-Tabelle: ${r.name}: ${formatIsoDe(r.start)} bis ${formatIsoDe(r.end)}`));
+    statusPeriods.filter(x => m(x.name)).forEach(x => items.push(`Statuslog (Slack-Status): ${x.name}, ${x.kind}, von ${formatIsoDe(x.von)} bis ${x.bis ? formatIsoDe(x.bis) : 'offen (gilt noch)'}`));
+    cachedData.filter(p => m(p.n)).forEach(p => items.push(`Aktueller Slack-Status: ${p.n}: „${p.t}“`));
+    return `<div class="box"><h2>Quellen für „${escapeHtml(q)}“</h2>` +
+        (items.length ? `<ul>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p>Keine Einträge gefunden.</p>') +
+        `<p class="hint">Der Kalender zeigt Urlaub aus der Urlaub-Tabelle, Krank aus der Krank-Tabelle und dem Slack-Status (Statuslog) sowie Homeoffice aus dem Statuslog.</p></div>`;
+}
+
+function renderCalendar(ym, nameFilter, showRegel, debugName, feedUrl) {
     const today = berlinDate();
     const year = parseInt(ym.slice(0, 4), 10);
     const month = parseInt(ym.slice(5), 10);
@@ -2695,6 +2802,15 @@ function renderCalendar(ym, nameFilter, showRegel) {
         <div class="cal-bar">${legend}</div>
         <div class="cal-grid">${grid}</div>
         <div class="agenda">${agenda}</div>
+        ${debugName ? renderCalDebug(debugName) : ''}
+        ${feedUrl ? `<details class="box"><summary style="cursor: pointer; font-weight: 800;">📎 In Outlook abonnieren</summary>
+            <p>Adresse des Kalenders (wie ein Passwort behandeln, nicht weitergeben):</p>
+            <input value="${escapeHtml(feedUrl)}" readonly onclick="this.select()">
+            <p class="hint"><b>Outlook (Desktop):</b> Datei, Kontoeinstellungen, Internetkalender, Neu, Adresse einfügen.<br>
+            <b>Outlook im Web / Microsoft 365:</b> Kalender hinzufügen, Aus dem Internet abonnieren.<br>
+            Outlook aktualisiert abonnierte Kalender nur in Abständen (meist alle paar Stunden), Änderungen erscheinen also verzögert.<br>
+            Auswahl der Einträge: <code>&amp;typen=urlaub,krank,homeoffice</code> (beliebig kombinierbar), Filter auf eine Person: <code>&amp;name=Teil des Namens</code>.</p>
+        </details>` : ''}
         ${(!krankRows.length && !statusPeriods.some(x => x.kind === 'krank')) ? '<p class="hint">Hinweis: Krankmeldungen erscheinen hier, sobald jemand den Slack-Status „Krank“ hat oder die Krank-Tabelle (Umgebungsvariable KRANK_CSV_URL) angebunden ist.</p>' : ''}
     `, true, true);
 }
@@ -2705,7 +2821,9 @@ app.get('/kalender', (req, res) => {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym) || yr < 2000 || yr > 2100) ym = berlinDate().slice(0, 7);
     const name = String((req.query && req.query.name) || '').slice(0, 100);
     const showRegel = String((req.query && req.query.regel) || '') !== '0';
-    res.send(renderCalendar(ym, name, showRegel));
+    const debugName = String((req.query && req.query.debug) || '').slice(0, 100);
+    const feedUrl = ICS_KEY ? `${baseUrl(req)}/kalender.ics?key=${encodeURIComponent(ICS_KEY)}` : '';
+    res.send(renderCalendar(ym, name, showRegel, debugName, feedUrl));
 });
 
 setTimeout(loadStatusLog, 5000);                      // kurz nach dem Start
