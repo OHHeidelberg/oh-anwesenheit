@@ -880,18 +880,22 @@ updateData();
 
 app.use(express.urlencoded({ extended: true }));
 
-// ---------- Passwortschutz ----------
-// Geschützt sind die Seiten, auf denen Krankmeldungen zu sehen sind bzw. Status gesetzt werden (Dashboard, Admin-Ansicht,
-// Hausmeister-Dashboard, Status-Update). Offen bleiben /empfang (zeigt nur "Im Büro"/"Abwesend") und die Ticket-Seiten.
-// Das Passwort wird bei Render als Umgebungsvariable DASHBOARD_PASSWORD gesetzt (nicht in den Code schreiben).
-// Ist die Variable leer, gibt es keinen Schutz.
+// ---------- Passwortschutz mit zwei Rollen ----------
+// DASHBOARD_PASSWORD = Passwort für alle Mitarbeiter: /dashboard zeigt die normale Ansicht.
+// ADMIN_PASSWORD     = Admin-Passwort: dieselbe Adresse /dashboard zeigt zusätzlich die Admin-Buttons.
+// Beide werden bei Render als Umgebungsvariablen gesetzt (nicht in den Code schreiben). Ist keines von beiden gesetzt, gibt es keinen Schutz.
+// Geschützt sind die Seiten mit Krankmeldungen bzw. Statussteuerung (Dashboard, Hausmeister-Dashboard, Kalender, Status-Update).
+// Offen bleiben /empfang (zeigt nur "Im Büro"/"Abwesend") und die Ticket-Seiten.
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
-const PROTECTED_PATHS = ['/dashboard', '/admin99', '/hausmeister/dashboard', '/update', '/update-info', '/kalender'];
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const AUTH_ENABLED = !!(DASHBOARD_PASSWORD || ADMIN_PASSWORD);
+const PROTECTED_PATHS = ['/dashboard', '/hausmeister/dashboard', '/update', '/update-info', '/kalender'];
 const AUTH_COOKIE = 'dash_auth';
 const loginAttempts = {};
 
-function authToken() {
-    return require('crypto').createHmac('sha256', DASHBOARD_PASSWORD).update('dashboard-login-v1').digest('hex');
+function roleToken(role) {
+    const secret = role === 'admin' ? ADMIN_PASSWORD : DASHBOARD_PASSWORD;
+    return require('crypto').createHmac('sha256', secret).update('dashboard-login-v2:' + role).digest('hex');
 }
 
 function safeEqual(a, b) {
@@ -910,10 +914,20 @@ function readCookie(req, name) {
     return '';
 }
 
-function isAuthenticated(req) {
-    if (!DASHBOARD_PASSWORD) return true;
-    return safeEqual(readCookie(req, AUTH_COOKIE), authToken());
+// Rolle aus dem Cookie ("admin.<Schlüssel>" oder "user.<Schlüssel>"): 'admin', 'user' oder '' (nicht angemeldet)
+function roleOf(req) {
+    const c = readCookie(req, AUTH_COOKIE);
+    const i = c.indexOf('.');
+    if (i < 1) return '';
+    const role = c.slice(0, i);
+    const tok = c.slice(i + 1);
+    if (role === 'admin' && ADMIN_PASSWORD && safeEqual(tok, roleToken('admin'))) return 'admin';
+    if (role === 'user' && DASHBOARD_PASSWORD && safeEqual(tok, roleToken('user'))) return 'user';
+    return '';
 }
+
+function isAuthenticated(req) { return !AUTH_ENABLED || roleOf(req) !== ''; }
+function isAdmin(req) { return AUTH_ENABLED && roleOf(req) === 'admin'; }
 
 // Nach der Anmeldung nur auf eigene Adressen weiterleiten
 function safeNext(n) {
@@ -943,7 +957,7 @@ function renderLogin(next, error) {
 }
 
 app.use((req, res, next) => {
-    if (!DASHBOARD_PASSWORD) return next();
+    if (!AUTH_ENABLED) return next();
     const path = String(req.path || String(req.url || '').split('?')[0]);
     if (!PROTECTED_PATHS.includes(path)) return next();
     if (isAuthenticated(req)) return next();
@@ -951,26 +965,33 @@ app.use((req, res, next) => {
 });
 
 app.get('/login', (req, res) => {
-    if (!DASHBOARD_PASSWORD || isAuthenticated(req)) return res.redirect(safeNext(req.query && req.query.next));
+    const wantsForm = req.query && req.query.neu; // /login?neu=1: Formular auch dann zeigen, wenn man schon angemeldet ist (z. B. für den Wechsel zum Admin)
+    if (!AUTH_ENABLED || (isAuthenticated(req) && !wantsForm)) return res.redirect(safeNext(req.query && req.query.next));
     res.send(renderLogin(req.query && req.query.next, ''));
 });
 
 app.post('/login', (req, res) => {
     const body = req.body || {};
-    if (!DASHBOARD_PASSWORD) return res.redirect('/dashboard');
+    if (!AUTH_ENABLED) return res.redirect('/dashboard');
     const ip = clientIp(req);
     const now = Date.now();
     const attempts = loginAttempts[ip] = (loginAttempts[ip] || []).filter(t => now - t < 15 * 60 * 1000);
     if (attempts.length >= 10) {
         return res.status(429).send(renderLogin(body.next, 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.'));
     }
-    if (!safeEqual(String(body.password || ''), DASHBOARD_PASSWORD)) {
+    const pw = String(body.password || '');
+    let role = '';
+    if (pw) {
+        if (ADMIN_PASSWORD && safeEqual(pw, ADMIN_PASSWORD)) role = 'admin';
+        else if (DASHBOARD_PASSWORD && safeEqual(pw, DASHBOARD_PASSWORD)) role = 'user';
+    }
+    if (!role) {
         attempts.push(now);
         return res.status(401).send(renderLogin(body.next, 'Falsches Passwort.'));
     }
     delete loginAttempts[ip];
     const secure = String((req.headers && req.headers['x-forwarded-proto']) || '').split(',')[0].trim() === 'https';
-    res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${authToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure ? '; Secure' : ''}`);
+    res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${role}.${roleToken(role)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure ? '; Secure' : ''}`);
     res.redirect(safeNext(body.next));
 });
 
@@ -979,8 +1000,11 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-if (!DASHBOARD_PASSWORD) {
-    console.log("Hinweis: DASHBOARD_PASSWORD ist nicht gesetzt - Dashboard und Admin-Ansicht sind ohne Passwort erreichbar.");
+if (!AUTH_ENABLED) {
+    console.log("Hinweis: DASHBOARD_PASSWORD und ADMIN_PASSWORD sind nicht gesetzt - das Dashboard ist ohne Passwort erreichbar, die Admin-Buttons sind nicht verfügbar.");
+} else {
+    if (!DASHBOARD_PASSWORD) console.log("Hinweis: DASHBOARD_PASSWORD (Mitarbeiter) ist nicht gesetzt - nur wer das Admin-Passwort kennt, kommt ins Dashboard.");
+    if (!ADMIN_PASSWORD) console.log("Hinweis: ADMIN_PASSWORD ist nicht gesetzt - die Admin-Buttons sind nicht verfügbar.");
 }
 
 app.post('/update-info', (req, res) => {
@@ -998,7 +1022,7 @@ app.post('/update-info', (req, res) => {
     res.redirect('back');
 });
 
-// Gemeinsame Seite für /dashboard, /admin99 und /hausmeister/dashboard (mode: 'standard', 'admin' oder 'hausmeister').
+// Gemeinsame Seite für /dashboard (normal und Admin) und /hausmeister/dashboard (mode: 'standard', 'admin' oder 'hausmeister').
 // Die Hausmeister-Variante hat nur vier Buttons (Dashboard, Krank, Urlaub, Hausmeister) und verlinkt nirgends in die anderen Ansichten.
 function renderDashboardPage(mode) {
     const standardButtons = `
@@ -1072,10 +1096,10 @@ ${navButtons}
         </script></body></html>`;
 }
 
-app.get('/dashboard', (req, res) => res.send(renderDashboardPage('standard')));
+app.get('/dashboard', (req, res) => res.send(renderDashboardPage(isAdmin(req) ? 'admin' : 'standard')));
 
-// Admin99 Ansicht mit den zusätzlichen Buttons
-app.get('/admin99', (req, res) => res.send(renderDashboardPage('admin')));
+// Die frühere Admin-Adresse leitet auf /dashboard um (die Admin-Buttons gibt es dort nach Eingabe des Admin-Passworts)
+app.get('/admin99', (req, res) => res.redirect('/dashboard'));
 
 // Reduzierte Ansicht für den Hausmeister: nur Dashboard, Krank, Urlaub und Hausmeister
 app.get('/hausmeister/dashboard', (req, res) => res.send(renderDashboardPage('hausmeister')));
@@ -2643,6 +2667,8 @@ function icsFold(line) {
     return out.join('\r\n ');
 }
 
+const icsStates = new Map(); // je Feed-Variante: { hash, modified } - nur bei geändertem Inhalt wird "modified" neu gesetzt
+
 function buildIcs(types, nameFilter) {
     const today = berlinDate();
     const from = isoAddDays(today, -365);
@@ -2671,23 +2697,30 @@ function buildIcs(types, nameFilter) {
     });
     events.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, 'de'));
 
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
     const crypto = require('crypto');
     const lines = [
         'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//OH Dashboard//Abwesenheitskalender//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-        'X-WR-CALNAME:Abwesenheiten', 'X-WR-TIMEZONE:Europe/Berlin', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'
+        'X-WR-CALNAME:Abwesenheiten', 'X-WR-TIMEZONE:Europe/Berlin', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M', 'X-PUBLISHED-TTL:PT15M'
     ];
     events.forEach(e => {
         const t = ICS_TYPEN[e.type];
         const uid = crypto.createHash('sha1').update(e.type + '|' + e.name.toLowerCase() + '|' + e.start).digest('hex') + '@oh-dashboard';
-        lines.push('BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + stamp,
+        lines.push('BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:@@STAMP@@', 'LAST-MODIFIED:@@STAMP@@',
             'DTSTART;VALUE=DATE:' + e.start.replace(/-/g, ''),
             'DTEND;VALUE=DATE:' + isoAddDays(e.end, 1).replace(/-/g, ''),     // Ende ist exklusiv
             'SUMMARY:' + icsEscape(`${t.icon} ${e.name} – ${t.label}`),
             'CATEGORIES:' + icsEscape(t.cat), 'TRANSP:TRANSPARENT', 'END:VEVENT');
     });
     lines.push('END:VCALENDAR');
-    return lines.map(icsFold).join('\r\n') + '\r\n';
+    const template = lines.map(icsFold).join('\r\n') + '\r\n';
+
+    // Zeitstempel nur ändern, wenn sich der Inhalt geändert hat (Outlook erkennt dann Änderungen zuverlässig, unveränderte Abrufe bleiben 304)
+    const hash = crypto.createHash('sha1').update(template).digest('hex');
+    const key = [...types].sort().join(',') + '|' + f;
+    let st = icsStates.get(key);
+    if (!st || st.hash !== hash) { st = { hash, modified: new Date() }; icsStates.set(key, st); }
+    const stamp = st.modified.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    return { body: template.split('@@STAMP@@').join(stamp), etag: '"' + hash + '"', modified: st.modified };
 }
 
 app.get('/kalender.ics', (req, res) => {
@@ -2700,7 +2733,11 @@ app.get('/kalender.ics', (req, res) => {
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', 'inline; filename="abwesenheiten.ics"');
     res.setHeader('Cache-Control', 'no-cache');
-    res.send(buildIcs(types, String((req.query && req.query.name) || '').slice(0, 100)));
+    const feed = buildIcs(types, String((req.query && req.query.name) || '').slice(0, 100));
+    res.setHeader('ETag', feed.etag);
+    res.setHeader('Last-Modified', feed.modified.toUTCString());
+    if (req.headers && req.headers['if-none-match'] === feed.etag) return res.status(304).send('');
+    res.send(feed.body);
 });
 
 if (!ICS_KEY) console.log("Hinweis: KALENDER_ICS_KEY ist nicht gesetzt - der Kalender-Feed für Outlook (/kalender.ics) ist deaktiviert.");
@@ -2806,9 +2843,10 @@ function renderCalendar(ym, nameFilter, showRegel, debugName, feedUrl) {
         ${feedUrl ? `<details class="box"><summary style="cursor: pointer; font-weight: 800;">📎 In Outlook abonnieren</summary>
             <p>Adresse des Kalenders (wie ein Passwort behandeln, nicht weitergeben):</p>
             <input value="${escapeHtml(feedUrl)}" readonly onclick="this.select()">
+            <p><a class="btn" href="${escapeHtml(feedUrl.replace(/^https?:/, 'webcal:'))}">Mit Outlook abonnieren (ein Klick)</a></p>
             <p class="hint"><b>Outlook (Desktop):</b> Datei, Kontoeinstellungen, Internetkalender, Neu, Adresse einfügen.<br>
             <b>Outlook im Web / Microsoft 365:</b> Kalender hinzufügen, Aus dem Internet abonnieren.<br>
-            Outlook aktualisiert abonnierte Kalender nur in Abständen (meist alle paar Stunden), Änderungen erscheinen also verzögert.<br>
+            Outlook entscheidet selbst, wann es einen abonnierten Kalender neu abruft (empfohlen: alle 15 Minuten, oft aber nur stündlich oder seltener). Sofortige Aktualisierung ist bei einem Abonnement nicht möglich.<br>
             Auswahl der Einträge: <code>&amp;typen=urlaub,krank,homeoffice</code> (beliebig kombinierbar), Filter auf eine Person: <code>&amp;name=Teil des Namens</code>.</p>
         </details>` : ''}
         ${(!krankRows.length && !statusPeriods.some(x => x.kind === 'krank')) ? '<p class="hint">Hinweis: Krankmeldungen erscheinen hier, sobald jemand den Slack-Status „Krank“ hat oder die Krank-Tabelle (Umgebungsvariable KRANK_CSV_URL) angebunden ist.</p>' : ''}
