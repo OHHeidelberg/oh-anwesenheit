@@ -2056,6 +2056,7 @@ app.get('/ticket/status', async (req, res) => {
         <li>
             <span class="badge ${TICKET_STATUS_CLASS[h.status] || 'st-wait'}">${escapeHtml(h.status)}</span>
             <span class="hint">${escapeHtml(formatTs(h.ts))}</span>
+            ${h.frage ? `<div class="hint" style="white-space: pre-wrap;">Rückfrage: „${escapeHtml(h.frage)}“</div>` : ''}
             ${h.note ? `<div>${escapeHtml(h.note)}</div>` : ''}
         </li>`).join('');
 
@@ -2208,8 +2209,11 @@ app.post('/ticket/antwort', async (req, res) => {
     if (t.status !== 'Rückfrage offen' || !antwort) return res.redirect(back);
 
     const neuerStatus = statusBeforeQuestion(t);
+    // Die Rückfrage, auf die sich die Antwort bezieht (zuletzt gestellte Rückfrage des Hausmeisters)
+    const frageEintrag = [...t.history].reverse().find(h => h.status === 'Rückfrage offen' && h.kind !== 'edit');
+    const frage = (frageEintrag && frageEintrag.note) || '';
     t.status = neuerStatus;
-    t.history.push({ ts: new Date().toISOString(), status: neuerStatus, note: 'Antwort des Auftraggebers: ' + antwort });
+    t.history.push({ ts: new Date().toISOString(), status: neuerStatus, kind: 'answer', note: 'Antwort des Auftraggebers: ' + antwort, ...(frage ? { frage } : {}) });
     ticketsVersion++;
     saveTickets();
     pushTicket(t);
@@ -2217,7 +2221,8 @@ app.post('/ticket/antwort', async (req, res) => {
     notifyHausmeisterSlack(
         `:speech_balloon: *Antwort auf Rückfrage* \`${t.nr}\`\n` +
         `*${slackEscape(t.titel)}* von ${slackEscape(t.auftraggeber)}\n` +
-        `${quoteForSlack(antwort)}\n` +
+        (frage ? `Rückfrage:\n${quoteForSlack(frage)}\n` : '') +
+        `Antwort:\n${quoteForSlack(antwort)}\n` +
         `<${baseUrl(req)}/hausmeister|Zur Übersicht>`);
     res.redirect(back);
 });
@@ -2296,7 +2301,7 @@ function renderHausmeisterTicket(t, f, today) {
             <div><b>Von:</b> ${escapeHtml(t.auftraggeber)} · <a href="mailto:${escapeHtml(t.email)}?subject=${mailSubject}">${escapeHtml(t.email)}</a></div>
             <div><b>Ort:</b> ${escapeHtml(t.ort)}${t.adresse ? ', ' + escapeHtml(t.adresse) : ''}${mapLink}</div>
             <div><b>Bis:</b> ${t.bis ? escapeHtml(formatDateLong(t.bis)) : 'keine Angabe'}${overdue ? ' <span class="overdue">überfällig</span>' : ''}</div>
-            ${last.note && last.note !== 'Auftrag eingegangen' ? `<div><b>Letzte Anmerkung:</b> ${escapeHtml(last.note)} <span class="hint">(${escapeHtml(formatTs(last.ts))})</span></div>` : ''}
+            ${last.note && last.note !== 'Auftrag eingegangen' ? `<div>${last.frage ? `<div class="hint" style="white-space: pre-wrap;"><b>Rückfrage:</b> „${escapeHtml(last.frage)}“</div>` : ''}<b>Letzte Anmerkung:</b> ${escapeHtml(last.note)} <span class="hint">(${escapeHtml(formatTs(last.ts))})</span></div>` : ''}
         </div>
         <form method="POST" action="/hausmeister/status">
             <input type="hidden" name="nr" value="${escapeHtml(t.nr)}">
